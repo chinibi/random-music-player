@@ -1,25 +1,45 @@
-const fs = require('fs');
-const mm = require('music-metadata');
+/**
+ * My good man Hofled helped out untangle the asynchronous javascript in this
+ * file. Follow him at https://github.com/hofled
+ */
 
-function getMusicList(dir) {
+import fs from 'fs';
+import mm from 'musicmetadata';
+
+async function getMusicList(dir) {
   let musicList = [];
 
   let filenames = fs.readdirSync(dir);
-  musicList = filenames.map(filename => dir + filename).map(handleMusicFile);
+  musicList = await handleMusicFiles(filenames, dir);
+
   return musicList;
 }
 
-function handleMusicFile(file) {
-  let fileData = {};
+function handleMusicFiles(files, dirName) {
+  return new Promise((res, rej) => {
+    let filesData = [];
+    let filesRemaining = files.length;
 
-  mm.parseFile(file)
-    .then(metadata => {
-      fileData = metadata;
-    })
-    .catch(err => console.error(err.message));
-
-  return fileData;
+    files.forEach(file => {
+      let readStream = fs.createReadStream(dirName + file);
+      // asynchronous function
+      mm(readStream, (err, metadata) => {
+        if (err) {
+          readStream.close();
+          rej('handleMusicFile failed');
+        }
+        let newFile = metadata;
+        newFile.filename = file;
+        filesData.push(newFile);
+        // checking for completion of iteration on files
+        --filesRemaining;
+        readStream.close();
+        if (!filesRemaining) {
+          res(filesData);
+        }
+      });
+    });
+  });
 }
 
-
-module.exports = getMusicList;
+export default getMusicList;
