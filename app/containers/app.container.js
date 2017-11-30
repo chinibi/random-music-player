@@ -31,9 +31,9 @@ class AppContainer extends React.Component {
 
   populateTracksList() {
     const soundDir = './public/sounds/'; // relative to index.html
-    let trackList = getMusicList(soundDir);
-    console.log(trackList);
-    this.setState({ tracks: trackList });
+    getMusicList(soundDir).then(tracks => {
+      this.setState({ tracks });
+    });
   }
 
   randomTrack() {

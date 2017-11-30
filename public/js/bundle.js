@@ -20273,10 +20273,12 @@ var AppContainer = function (_React$Component) {
   }, {
     key: 'populateTracksList',
     value: function populateTracksList() {
+      var _this2 = this;
+
       var soundDir = './public/sounds/'; // relative to index.html
-      var trackList = (0, _getMusicList2.default)(soundDir);
-      console.log(trackList);
-      this.setState({ tracks: trackList });
+      (0, _getMusicList2.default)(soundDir).then(function (tracks) {
+        _this2.setState({ tracks: tracks });
+      });
     }
   }, {
     key: 'randomTrack',
@@ -29087,23 +29089,39 @@ Object.defineProperty(exports, "__esModule", {
   value: true
 });
 
+/**
+ * Get a list of files of supported file extensions from the given directory
+ * Supported extensions are: .mp3, .mp4, .wav, .ogg, .flac, and .3gp
+ * @param dir (string) The relative path to the directory being searched.
+ *    The trailing slash must be included.
+ *
+ * @return a Promise resolving into an array of objects each containing sound metadata
+ */
 var getMusicList = function () {
   var _ref = _asyncToGenerator( /*#__PURE__*/regeneratorRuntime.mark(function _callee(dir) {
-    var musicList, filenames;
+    var musicList, filenames, supportedExtensions;
     return regeneratorRuntime.wrap(function _callee$(_context) {
       while (1) {
         switch (_context.prev = _context.next) {
           case 0:
             musicList = [];
             filenames = _fs2.default.readdirSync(dir);
-            _context.next = 4;
-            return handleMusicFiles(filenames, dir);
+            // we should pass in only supported file types
 
-          case 4:
+            supportedExtensions = /\.(mp3|mp4|wav|ogg|flac|3gp)$/;
+
+            filenames.filter(function (filename) {
+              return filename.match(supportedExtensions);
+            });
+
+            _context.next = 6;
+            return handleFiles(filenames, dir);
+
+          case 6:
             musicList = _context.sent;
             return _context.abrupt('return', musicList);
 
-          case 6:
+          case 8:
           case 'end':
             return _context.stop();
         }
@@ -29131,7 +29149,7 @@ function _asyncToGenerator(fn) { return function () { var gen = fn.apply(this, a
                                                                                                                                                                                                                                                                                                                                                                                                                                                                             * file. Follow him at https://github.com/hofled
                                                                                                                                                                                                                                                                                                                                                                                                                                                                             */
 
-function handleMusicFiles(files, dirName) {
+function handleFiles(files, dirName) {
   return new Promise(function (res, rej) {
     var filesData = [];
     var filesRemaining = files.length;
