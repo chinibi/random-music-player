@@ -1,8 +1,6 @@
 import React from 'react';
 import Sound from 'react-sound';
-
-import fs from 'fs';
-import mm from 'musicmetadata';
+import getMusicList from '../libs/getMusicList';
 
 import Details from '../components/details.component';
 import Player from '../components/player.component';
@@ -32,13 +30,10 @@ class AppContainer extends React.Component {
   }
 
   populateTracksList() {
-    const soundDir = './public/sounds';
-    let readableStream = fs.createReadStream('./public/sounds/Ys_I_&_II_-_Feena.ogg');
-    let parser = mm(readableStream, (err, metadata) => {
-      if (err) throw err;
-      console.log(metadata);
-      readableStream.close();
-    });
+    const soundDir = './public/sounds/'; // relative to index.html
+    const trackList = getMusicList(soundDir);
+    console.log(trackList);
+    this.setState({ tracks: trackList });
   }
 
   randomTrack() {
@@ -86,7 +81,11 @@ class AppContainer extends React.Component {
   }
 
   stop() {
-    this.setState({playStatus: Sound.status.STOPPED});
+    this.setState({
+      playStatus: Sound.status.STOPPED,
+      position: 0,
+      elapsed: '00:00'
+    });
   }
 
   forward() {

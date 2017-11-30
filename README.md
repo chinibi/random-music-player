@@ -5,12 +5,19 @@ player that plays sounds in a selected directory in a random order.
 
 ## Running the dev version
 
-You need Git and Node.js installed to run this.  From your command line:
+You need Git and Node.js installed to run this.  Have at least two terminal
+windows open and run these commands.
 
 ```
 $ git clone https://github.com/chinibi/random-music-player.git
 $ cd random-music-player
 $ npm install
-$ npm run dev
-$ npm run start
 ```
+
+In one window run:
+
+`$ npm run dev`
+
+In the other window run:
+
+`$ npm run start`

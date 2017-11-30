@@ -28,6 +28,9 @@ const config = {
       }
     ]
   },
+  plugins: [
+    new webpack.IgnorePlugin(/vertx/)
+  ],
   resolve: {
     extensions: ['.js', '.jsx']
   },
