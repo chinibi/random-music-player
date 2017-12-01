@@ -22,9 +22,6 @@ class Player extends React.Component {
             <button onClick={this.props.stop}>
               <i className="fa fa-stop"></i>
             </button>
-            <button onClick={this.props.random}>
-              <i className="fa fa-random"></i>
-            </button>
           </div>
           <div className="player__forward">
             <button onClick={this.props.forward}>

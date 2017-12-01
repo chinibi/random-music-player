@@ -60,15 +60,11 @@
 /******/ 	__webpack_require__.p = "/public/js";
 /******/
 /******/ 	// Load entry module and return exports
-/******/ 	return __webpack_require__(__webpack_require__.s = 60);
+/******/ 	return __webpack_require__(__webpack_require__.s = 36);
 /******/ })
 /************************************************************************/
 /******/ ([
-/* 0 */,
-/* 1 */,
-/* 2 */,
-/* 3 */,
-/* 4 */
+/* 0 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -127,8 +123,7 @@ function invariant(condition, format, a, b, c, d, e, f) {
 module.exports = invariant;
 
 /***/ }),
-/* 5 */,
-/* 6 */
+/* 1 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -142,7 +137,7 @@ module.exports = invariant;
 
 
 
-var emptyFunction = __webpack_require__(12);
+var emptyFunction = __webpack_require__(4);
 
 /**
  * Similar to invariant but only logs a warning if the condition is not met.
@@ -196,24 +191,21 @@ if (process.env.NODE_ENV !== 'production') {
 module.exports = warning;
 
 /***/ }),
-/* 7 */,
-/* 8 */,
-/* 9 */
+/* 2 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
 
 
 if (process.env.NODE_ENV === 'production') {
-  module.exports = __webpack_require__(61);
+  module.exports = __webpack_require__(37);
 } else {
-  module.exports = __webpack_require__(62);
+  module.exports = __webpack_require__(38);
 }
 
 
 /***/ }),
-/* 10 */,
-/* 11 */
+/* 3 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -310,7 +302,7 @@ module.exports = shouldUseNative() ? Object.assign : function (target, source) {
 
 
 /***/ }),
-/* 12 */
+/* 4 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -352,14 +344,754 @@ emptyFunction.thatReturnsArgument = function (arg) {
 module.exports = emptyFunction;
 
 /***/ }),
-/* 13 */
-/***/ (function(module, exports) {
+/* 5 */
+/***/ (function(module, exports, __webpack_require__) {
 
-module.exports = require("assert");
+"use strict";
+
+var strtok = __webpack_require__(6)
+var equal = __webpack_require__(34)
+var windows1252decoder = __webpack_require__(73)
+
+var asfGuidBuf = new Buffer([
+  0x30, 0x26, 0xB2, 0x75, 0x8E, 0x66, 0xCF, 0x11,
+  0xA6, 0xD9, 0x00, 0xAA, 0x00, 0x62, 0xCE, 0x6C
+])
+exports.asfGuidBuf = asfGuidBuf
+
+exports.getParserForMediaType = function (types, header) {
+  for (var i = 0; i < types.length; i += 1) {
+    var type = types[i]
+    var offset = type.offset || 0
+    if (header.length >= offset + type.buf.length &&
+      equal(header.slice(offset, offset + type.buf.length), type.buf)) {
+      return type.tag
+    }
+  }
+  // default to id3v1.1 if we cannot detect any other tags
+  return __webpack_require__(74)
+}
+
+exports.streamOnRealEnd = function (stream, callback) {
+  stream.on('end', done)
+  stream.on('close', done)
+  function done () {
+    stream.removeListener('end', done)
+    stream.removeListener('close', done)
+    callback()
+  }
+}
+
+exports.readVorbisPicture = function (buffer) {
+  var picture = {}
+  var offset = 0
+
+  picture.type = PICTURE_TYPE[strtok.UINT32_BE.get(buffer, 0)]
+
+  var mimeLen = strtok.UINT32_BE.get(buffer, offset += 4)
+  picture.format = buffer.toString('utf-8', offset += 4, offset + mimeLen)
+
+  var descLen = strtok.UINT32_BE.get(buffer, offset += mimeLen)
+  picture.description = buffer.toString('utf-8', offset += 4, offset + descLen)
+
+  picture.width = strtok.UINT32_BE.get(buffer, offset += descLen)
+  picture.height = strtok.UINT32_BE.get(buffer, offset += 4)
+  picture.colour_depth = strtok.UINT32_BE.get(buffer, offset += 4)
+  picture.indexed_color = strtok.UINT32_BE.get(buffer, offset += 4)
+
+  var picDataLen = strtok.UINT32_BE.get(buffer, offset += 4)
+  picture.data = new Buffer(buffer.slice(offset += 4, offset + picDataLen))
+
+  return picture
+}
+
+exports.removeUnsyncBytes = function (buffer) {
+  var readI = 0
+  var writeI = 0
+  while (readI < buffer.length - 1) {
+    if (readI !== writeI) {
+      buffer[writeI] = buffer[readI]
+    }
+    readI += (buffer[readI] === 0xFF && buffer[readI + 1] === 0) ? 2 : 1
+    writeI++
+  }
+  if (readI < buffer.length) {
+    buffer[writeI++] = buffer[readI++]
+  }
+  return buffer.slice(0, writeI)
+}
+
+exports.findZero = function (buffer, start, end, encoding) {
+  var i = start
+  if (encoding === 'utf16') {
+    while (buffer[i] !== 0 || buffer[i + 1] !== 0) {
+      if (i >= end) return end
+      i += 2
+    }
+    return i
+  } else {
+    while (buffer[i] !== 0) {
+      if (i >= end) return end
+      i++
+    }
+    return i
+  }
+}
+
+exports.sum = function (arr) {
+  var s = 0
+  var i
+  for (i = 0; i < arr.length; i++) {
+    s += arr[i]
+  }
+  return s
+}
+
+function swapBytes (buffer) {
+  var l = buffer.length
+  if (l & 0x01) {
+    throw new Error('Buffer length must be even')
+  }
+  for (var i = 0; i < l; i += 2) {
+    var a = buffer[i]
+    buffer[i] = buffer[i + 1]
+    buffer[i + 1] = a
+  }
+  return buffer
+}
+
+var readUTF16String = exports.readUTF16String = function (buffer) {
+  var offset = 0
+  if (buffer[0] === 0xFE && buffer[1] === 0xFF) { // big endian
+    buffer = swapBytes(buffer)
+    offset = 2
+  } else if (buffer[0] === 0xFF && buffer[1] === 0xFE) { // little endian
+    offset = 2
+  }
+  return buffer.toString('ucs2', offset)
+}
+
+exports.decodeString = function (buffer, encoding) {
+  // annoying workaround for a double BOM issue
+  // https://github.com/leetreveil/musicmetadata/issues/84
+  if (buffer[0] === 0xFF && buffer[1] === 0xFE && buffer[2] === 0xFE && buffer[3] === 0xFF) {
+    buffer = buffer.slice(2)
+  }
+
+  if (encoding === 'utf16le' || encoding === 'utf16') {
+    return readUTF16String(buffer)
+  } else if (encoding === 'utf8') {
+    return buffer.toString('utf8')
+  } else if (encoding === 'iso-8859-1') {
+    return windows1252decoder(buffer)
+  }
+
+  throw Error(encoding + ' encoding is not supported!')
+}
+
+exports.parseGenre = function (origVal) {
+  // match everything inside parentheses
+  var split = origVal.trim().split(/\((.*?)\)/g)
+    .filter(function (val) { return val !== '' })
+
+  var array = []
+  for (var i = 0; i < split.length; i++) {
+    var cur = split[i]
+    if (/^\d+$/.test(cur) && !isNaN(parseInt(cur, 10))) {
+      cur = GENRES[cur]
+    }
+    array.push(cur)
+  }
+
+  return array
+    .filter(function (val) { return val !== undefined })
+    .join('/')
+}
+
+exports.stripNulls = function (str) {
+  str = str.replace(/^\x00+/g, '')
+  str = str.replace(/\x00+$/g, '')
+  return str
+}
+
+exports.strtokUINT24_BE = {
+  len: 3,
+  get: function (buf, off) {
+    return (((buf[off] << 8) + buf[off + 1]) << 8) + buf[off + 2]
+  }
+}
+
+exports.strtokBITSET = {
+  len: 1,
+  get: function (buf, off, bit) {
+    return (buf[off] & (1 << bit)) !== 0
+  }
+}
+
+exports.strtokINT32SYNCSAFE = {
+  len: 4,
+  get: function (buf, off) {
+    return buf[off + 3] & 0x7f | ((buf[off + 2]) << 7) |
+        ((buf[off + 1]) << 14) | ((buf[off]) << 21)
+  }
+}
+
+var PICTURE_TYPE = exports.PICTURE_TYPE = [
+  'Other',
+  "32x32 pixels 'file icon' (PNG only)",
+  'Other file icon',
+  'Cover (front)',
+  'Cover (back)',
+  'Leaflet page',
+  'Media (e.g. lable side of CD)',
+  'Lead artist/lead performer/soloist',
+  'Artist/performer',
+  'Conductor',
+  'Band/Orchestra',
+  'Composer',
+  'Lyricist/text writer',
+  'Recording Location',
+  'During recording',
+  'During performance',
+  'Movie/video screen capture',
+  'A bright coloured fish',
+  'Illustration',
+  'Band/artist logotype',
+  'Publisher/Studio logotype'
+]
+
+var GENRES = exports.GENRES = [
+  'Blues', 'Classic Rock', 'Country', 'Dance', 'Disco', 'Funk', 'Grunge', 'Hip-Hop',
+  'Jazz', 'Metal', 'New Age', 'Oldies', 'Other', 'Pop', 'R&B', 'Rap', 'Reggae', 'Rock',
+  'Techno', 'Industrial', 'Alternative', 'Ska', 'Death Metal', 'Pranks', 'Soundtrack',
+  'Euro-Techno', 'Ambient', 'Trip-Hop', 'Vocal', 'Jazz+Funk', 'Fusion', 'Trance',
+  'Classical', 'Instrumental', 'Acid', 'House', 'Game', 'Sound Clip', 'Gospel', 'Noise',
+  'Alt. Rock', 'Bass', 'Soul', 'Punk', 'Space', 'Meditative', 'Instrumental Pop',
+  'Instrumental Rock', 'Ethnic', 'Gothic', 'Darkwave', 'Techno-Industrial',
+  'Electronic', 'Pop-Folk', 'Eurodance', 'Dream', 'Southern Rock', 'Comedy', 'Cult',
+  'Gangsta Rap', 'Top 40', 'Christian Rap', 'Pop/Funk', 'Jungle', 'Native American',
+  'Cabaret', 'New Wave', 'Psychedelic', 'Rave', 'Showtunes', 'Trailer', 'Lo-Fi', 'Tribal',
+  'Acid Punk', 'Acid Jazz', 'Polka', 'Retro', 'Musical', 'Rock & Roll', 'Hard Rock',
+  'Folk', 'Folk/Rock', 'National Folk', 'Swing', 'Fast-Fusion', 'Bebob', 'Latin', 'Revival',
+  'Celtic', 'Bluegrass', 'Avantgarde', 'Gothic Rock', 'Progressive Rock', 'Psychedelic Rock',
+  'Symphonic Rock', 'Slow Rock', 'Big Band', 'Chorus', 'Easy Listening', 'Acoustic', 'Humour',
+  'Speech', 'Chanson', 'Opera', 'Chamber Music', 'Sonata', 'Symphony', 'Booty Bass', 'Primus',
+  'Porn Groove', 'Satire', 'Slow Jam', 'Club', 'Tango', 'Samba', 'Folklore',
+  'Ballad', 'Power Ballad', 'Rhythmic Soul', 'Freestyle', 'Duet', 'Punk Rock', 'Drum Solo',
+  'A Cappella', 'Euro-House', 'Dance Hall', 'Goa', 'Drum & Bass', 'Club-House',
+  'Hardcore', 'Terror', 'Indie', 'BritPop', 'Negerpunk', 'Polsk Punk', 'Beat',
+  'Christian Gangsta Rap', 'Heavy Metal', 'Black Metal', 'Crossover', 'Contemporary Christian',
+  'Christian Rock', 'Merengue', 'Salsa', 'Thrash Metal', 'Anime', 'JPop', 'Synthpop',
+  'Abstract', 'Art Rock', 'Baroque', 'Bhangra', 'Big Beat', 'Breakbeat', 'Chillout',
+  'Downtempo', 'Dub', 'EBM', 'Eclectic', 'Electro', 'Electroclash', 'Emo', 'Experimental',
+  'Garage', 'Global', 'IDM', 'Illbient', 'Industro-Goth', 'Jam Band', 'Krautrock',
+  'Leftfield', 'Lounge', 'Math Rock', 'New Romantic', 'Nu-Breakz', 'Post-Punk', 'Post-Rock',
+  'Psytrance', 'Shoegaze', 'Space Rock', 'Trop Rock', 'World Music', 'Neoclassical', 'Audiobook',
+  'Audio Theatre', 'Neue Deutsche Welle', 'Podcast', 'Indie Rock', 'G-Funk', 'Dubstep',
+  'Garage Rock', 'Psybient'
+]
+
 
 /***/ }),
-/* 14 */,
-/* 15 */
+/* 6 */
+/***/ (function(module, exports, __webpack_require__) {
+
+// A fast streaming parser library.
+
+var assert = __webpack_require__(70);
+var Buffer = __webpack_require__(33).Buffer;
+
+// Buffer for parse() to handle types that span more than one buffer
+var SPANNING_BUF = new Buffer(1024);
+
+// Possibly call flush()
+var maybeFlush = function(b, o, len, flush) {
+    if (o + len > b.length) {
+        if (typeof(flush) !== 'function') {
+            throw new Error(
+                'Buffer out of space and no valid flush() function found'
+            );
+        }
+
+        flush(b, o);
+
+        return 0;
+    }
+
+    return o;
+};
+
+// Sentinel types
+
+var DEFER = {};
+exports.DEFER = DEFER;
+
+var DONE = {};
+exports.DONE = DONE;
+
+// Primitive types
+
+var UINT8 = {
+    len : 1,
+    get : function(buf, off) {
+        return buf[off];
+    },
+    put : function(b, o, v, flush) {
+        assert.equal(typeof o, 'number');
+        assert.equal(typeof v, 'number');
+        assert.ok(v >= 0 && v <= 0xff);
+        assert.ok(o >= 0);
+        assert.ok(this.len <= b.length);
+
+        var no = maybeFlush(b, o, this.len, flush);
+        b[no] = v & 0xff;
+
+        return (no - o) + this.len;
+    }
+};
+exports.UINT8 = UINT8;
+
+var UINT16_LE = {
+    len : 2,
+    get : function(buf, off) {
+        return buf[off] | (buf[off + 1] << 8);
+    },
+    put : function(b, o, v, flush) {
+        assert.equal(typeof o, 'number');
+        assert.equal(typeof v, 'number');
+        assert.ok(v >= 0 && v <= 0xffff);
+        assert.ok(o >= 0);
+        assert.ok(this.len <= b.length);
+
+        var no = maybeFlush(b, o, this.len, flush);
+        b[no] = v & 0xff;
+        b[no + 1] = (v >>> 8) & 0xff;
+
+        return (no - o) + this.len;
+    }
+};
+exports.UINT16_LE = UINT16_LE;
+
+var UINT16_BE = {
+    len : 2,
+    get : function(buf, off) {
+        return (buf[off] << 8) | buf[off + 1];
+    },
+    put : function(b, o, v, flush) {
+        assert.equal(typeof o, 'number');
+        assert.equal(typeof v, 'number');
+        assert.ok(v >= 0 && v <= 0xffff);
+        assert.ok(o >= 0);
+        assert.ok(this.len <= b.length);
+
+        var no = maybeFlush(b, o, this.len, flush);
+        b[no] = (v >>> 8) & 0xff;
+        b[no + 1] = v & 0xff;
+
+        return (no - o) + this.len;
+    }
+};
+exports.UINT16_BE = UINT16_BE;
+
+var UINT24_LE = {
+    len : 3,
+    get : function(buf, off) {
+        return buf[off] | (buf[off + 1] << 8) | (buf[off + 2] << 16);
+    },
+    put : function(b, o, v, flush) {
+        assert.equal(typeof o, 'number');
+        assert.equal(typeof v, 'number');
+        assert.ok(v >= 0 && v <= 0xffffff);
+        assert.ok(o >= 0);
+        assert.ok(this.len <= b.length);
+
+        var no = maybeFlush(b, o, this.len, flush);
+        b[no] = v & 0xff;
+        b[no + 1] = (v >>> 8) & 0xff;
+        b[no + 2] = (v >>> 16) & 0xff;
+
+        return (no - o) + this.len;
+    }
+};
+exports.UINT24_LE = UINT24_LE;
+
+var UINT24_BE = {
+    len : 3,
+    get : function (buf, off) {
+        return (((buf[off] << 8) + buf[off + 1]) << 8) + buf[off + 2]
+    },
+    put : function(b, o, v, flush) {
+        assert.equal(typeof o, 'number');
+        assert.equal(typeof v, 'number');
+        assert.ok(v >= 0 && v <= 0xffffff);
+        assert.ok(o >= 0);
+        assert.ok(this.len <= b.length);
+
+        var no = maybeFlush(b, o, this.len, flush);
+        b[no] = (v >>> 16) & 0xff;
+        b[no + 1] = (v >>> 8) & 0xff;
+        b[no + 2] = v & 0xff;
+
+        return (no - o) + this.len;
+    }
+};
+exports.UINT24_BE = UINT24_BE;
+
+var UINT32_LE = {
+    len : 4,
+    get : function(buf, off) {
+        // Shifting the MSB by 24 directly causes it to go negative if its
+        // last bit is high, so we instead shift by 23 and multiply by 2.
+        // Also, using binary OR to count the MSB if its last bit is high
+        // causes the value to go negative. Use addition there.
+        return (buf[off] | (buf[off + 1] << 8) | (buf[off + 2] << 16)) +
+               ((buf[off + 3] << 23) * 2);
+    },
+    put : function(b, o, v, flush) {
+        assert.equal(typeof o, 'number');
+        assert.equal(typeof v, 'number');
+        assert.ok(v >= 0 && v <= 0xffffffff);
+        assert.ok(o >= 0);
+        assert.ok(this.len <= b.length);
+
+        var no = maybeFlush(b, o, this.len, flush);
+        b[no] = v & 0xff;
+        b[no + 1] = (v >>> 8) & 0xff;
+        b[no + 2] = (v >>> 16) & 0xff;
+        b[no + 3] = (v >>> 24) & 0xff;
+
+        return (no - o) + this.len;
+    }
+};
+exports.UINT32_LE = UINT32_LE;
+
+var UINT32_BE = {
+    len : 4,
+    get : function(buf, off) {
+        // See comments in UINT32_LE.get()
+        return ((buf[off] << 23) * 2) +
+               ((buf[off + 1] << 16) | (buf[off + 2] << 8) | buf[off + 3]);
+    },
+    put : function(b, o, v, flush) {
+        assert.equal(typeof o, 'number');
+        assert.equal(typeof v, 'number');
+        assert.ok(v >= 0 && v <= 0xffffffff);
+        assert.ok(o >= 0);
+        assert.ok(this.len <= b.length);
+
+        var no = maybeFlush(b, o, this.len, flush);
+        b[no] = (v >>> 24) & 0xff;
+        b[no + 1] = (v >>> 16) & 0xff;
+        b[no + 2] = (v >>> 8) & 0xff;
+        b[no + 3] = v & 0xff;
+
+        return (no - o) + this.len;
+    }
+};
+exports.UINT32_BE = UINT32_BE;
+
+var INT8 = {
+    len : 1,
+    get : function(buf, off)  {
+        var v = UINT8.get(buf, off);
+        return ((v & 0x80) === 0x80) ?
+            (-128 + (v & 0x7f)) :
+            v;
+    },
+    put : function(b, o, v, flush) {
+        assert.equal(typeof o, 'number');
+        assert.equal(typeof v, 'number');
+        assert.ok(v >= -128 && v <= 127);
+        assert.ok(o >= 0);
+        assert.ok(this.len <= b.length);
+
+        var no = maybeFlush(b, o, this.len, flush);
+        b[no] = v & 0xff;
+
+        return (no - o) + this.len;
+    }
+};
+exports.INT8 = INT8;
+
+var INT16_BE = {
+    len : 2,
+    get : function(buf, off)  {
+        var v = UINT16_BE.get(buf, off);
+        return ((v & 0x8000) === 0x8000) ?
+            (-32768 + (v & 0x7fff)) :
+            v;
+    },
+    put : function(b, o, v, flush) {
+        assert.equal(typeof o, 'number');
+        assert.equal(typeof v, 'number');
+        assert.ok(v >= -32768 && v <= 32767);
+        assert.ok(o >= 0);
+        assert.ok(this.len <= b.length);
+
+        var no = maybeFlush(b, o, this.len, flush);
+        b[no] = ((v & 0xffff) >>> 8) & 0xff;
+        b[no + 1] = v & 0xff;
+
+        return (no - o) + this.len;
+    }
+};
+exports.INT16_BE = INT16_BE;
+
+var INT24_BE = {
+    len : 3,
+    get : function(buf, off)  {
+       var v = UINT24_BE.get(buf, off);
+        return ((v & 0x800000) === 0x800000) ?
+          (-0x800000 + (v & 0x7fffff)) : v;
+    },
+    put : function(b, o, v, flush) {
+        assert.equal(typeof o, 'number');
+        assert.equal(typeof v, 'number');
+        assert.ok(v >= -0x800000 && v <= 0x7fffff);
+        assert.ok(o >= 0);
+        assert.ok(this.len <= b.length);
+
+        var no = maybeFlush(b, o, this.len, flush);
+        b[no] = (v >>> 16) & 0xff;
+        b[no + 1] = (v >>> 8) & 0xff;
+        b[no + 2] = v & 0xff;
+
+        return (no - o) + this.len;
+    }
+};
+exports.INT24_BE = INT24_BE;
+
+var INT32_BE = {
+    len : 4,
+    get : function(buf, off)  {
+        // We cannot check for 0x80000000 directly, as this always returns
+        // false. Instead, check for the two's-compliment value, which
+        // behaves as expected. Also, we cannot subtract our value all at
+        // once, so do it in two steps to avoid sign busting.
+        var v = UINT32_BE.get(buf, off);
+        return ((v & 0x80000000) === -2147483648) ?
+            ((v & 0x7fffffff) - 1073741824 - 1073741824) :
+            v;
+    },
+    put : function(b, o, v, flush) {
+        assert.equal(typeof o, 'number');
+        assert.equal(typeof v, 'number');
+        assert.ok(v >= -2147483648 && v <= 2147483647);
+        assert.ok(o >= 0);
+        assert.ok(this.len <= b.length);
+
+        var no = maybeFlush(b, o, this.len, flush);
+        b[no] = (v >>> 24) & 0xff;
+        b[no + 1] = (v >>> 16) & 0xff;
+        b[no + 2] = (v >>> 8) & 0xff;
+        b[no + 3] = v & 0xff;
+
+        return (no - o) + this.len;
+    }
+};
+exports.INT32_BE = INT32_BE;
+
+// Complex types
+//
+// These types are intended to allow callers to re-use them by manipulating
+// the 'len' and other properties directly.
+
+var IgnoreType = function(l) {
+  this.len = l;
+  this.get = function() {
+    return null;
+  };
+};
+exports.IgnoreType = IgnoreType;
+
+
+var BufferType = function(l) {
+    var self = this;
+
+    self.len = l;
+
+    self.get = function(buf, off) {
+        return buf.slice(off, off + this.len);
+    };
+};
+exports.BufferType = BufferType;
+
+var StringType = function(l, e) {
+    var self = this;
+
+    self.len = l;
+
+    self.encoding = e;
+
+    self.get = function(buf, off) {
+        return buf.toString(e, off, off + this.len);
+    };
+};
+exports.StringType = StringType;
+
+// Parse a stream
+var parse = function(s, cb) {
+    // Type of data that we're to parse next; if DEFER, we're awaiting
+    // an invocation of typeCallback
+    var type = DEFER;
+
+    // Data that we've seen but not yet processed / handed off to cb; first
+    // valid byte to process is always bufs[0][bufOffset]
+    var bufs = [];
+    var bufsLen = 0;
+    var bufOffset = 0;
+    var ignoreLen = 0;
+
+    // Callback for FSM to tell us what type to expect next
+    var typeCallback = function(t) {
+        if (type !== DEFER) {
+            throw new Error('refusing to overwrite non-DEFER type');
+        }
+
+        type = t;
+
+        emitData();
+    };
+
+    // Process data that we have accumulated so far, emitting any type(s)
+    // collected. This is the main parsing loop.
+    //
+    // Out strategy for handling buffers is to shift them off of the bufs[]
+    // array until we have enough accumulated to account for type.len bytes.
+    var emitData = function() {
+        var b;
+        while (type !== DONE && type !== DEFER && bufsLen >= type.len) {
+            b = bufs[0];
+            var bo = bufOffset;
+
+            assert.ok(bufOffset >= 0 && bufOffset < b.length);
+
+            if ((b.length - bufOffset) < type.len) {
+                if (SPANNING_BUF.length < type.len) {
+                    SPANNING_BUF = new Buffer(
+                        Math.pow(2, Math.ceil(Math.log(type.len) / Math.log(2)))
+                    );
+                }
+
+                b = SPANNING_BUF;
+                bo = 0;
+
+                var bytesCopied = 0;
+                while (bytesCopied < type.len && bufs.length > 0) {
+                    var bb = bufs[0];
+                    var copyLength = Math.min(type.len - bytesCopied, bb.length - bufOffset);
+
+                    // TODO: Manually copy bytes if we don't need many of them.
+                    //       Bouncing down into C++ land to invoke
+                    //       Buffer.copy() is expensive enough that we
+                    //       shouldnt' do it unless we have a lot of dato to
+                    //       copy.
+                    bb.copy(
+                        b,
+                        bytesCopied,
+                        bufOffset,
+                        bufOffset + copyLength
+                    );
+
+                    bytesCopied += copyLength;
+
+                    if (copyLength < (bb.length - bufOffset)) {
+                        assert.equal(bytesCopied, type.len);
+                        bufOffset += copyLength;
+                    } else {
+                        assert.equal(bufOffset + copyLength, bb.length);
+                        bufs.shift();
+                        bufOffset = 0;
+                    }
+                }
+
+                assert.equal(bytesCopied, type.len);
+            } else if ((b.length - bufOffset) === type.len) {
+                bufs.shift();
+                bufOffset = 0;
+            } else {
+                bufOffset += type.len;
+            }
+
+            bufsLen -= type.len;
+            type = cb(type.get(b, bo), typeCallback);
+            if (type instanceof IgnoreType) {
+              ignoreLen += type.len;
+              if (ignoreLen >= bufsLen) {
+                // clear all buffers
+                ignoreLen -= bufsLen;
+                bufsLen = 0;
+                bufs = [];
+                bufOffset = 0;
+              } else if (ignoreLen < bufs[0].length - bufOffset) {
+                // set bufOffset correctly
+                bufsLen -= ignoreLen;
+                bufOffset += ignoreLen;
+                ignoreLen = 0;
+              } else if (bufsLen > 0) {
+                // shift some buffers and set bufOffset correctly.
+                bufsLen -= ignoreLen;
+                ignoreLen += bufOffset;
+                while (ignoreLen >= bufs[0].length) {
+                  ignoreLen -= bufs.shift().length;
+                }
+                bufOffset = ignoreLen;
+                ignoreLen = 0;
+              }
+              type = cb(type.get(), typeCallback);
+            }
+        }
+
+        if (type === DONE) {
+            s.removeListener('data', dataListener);
+
+            // Pump all of the buffers that we already saw back through the
+            // stream; the protocol layer will have set up listeners for this
+            // event if it cares about the remaining data.
+            while (bufs.length > 0) {
+                b = bufs.shift();
+
+                if (bufOffset > 0) {
+                    b = b.slice(bufOffset, b.length);
+                    bufOffset = 0;
+                }
+
+                s.emit('data', b);
+            }
+        }
+    };
+
+    // Listen for data from our stream
+    var dataListener = function(d) {
+        if (d.length <= ignoreLen) {
+          // ignore this data
+          assert.strictEqual(bufsLen, 0);
+          assert.strictEqual(bufs.length, 0);
+          ignoreLen -= d.length;
+        } else if (ignoreLen > 0) {
+          assert.strictEqual(bufsLen, 0);
+          bufsLen = d.length - ignoreLen;
+          bufs.push(d.slice(ignoreLen));
+          ignoreLen = 0;
+          emitData();
+        } else {
+          bufs.push(d);
+          bufsLen += d.length;
+          emitData();
+        }
+    };
+
+    // Get the initial type
+    type = cb(undefined, typeCallback);
+    if (type !== DONE) {
+        s.on('data', dataListener);
+    }
+};
+exports.parse = parse;
+
+
+/***/ }),
+/* 7 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -373,15 +1105,15 @@ module.exports = require("assert");
 
 
 
-var _assign = __webpack_require__(11);
+var _assign = __webpack_require__(3);
 
-var ReactCurrentOwner = __webpack_require__(22);
+var ReactCurrentOwner = __webpack_require__(11);
 
-var warning = __webpack_require__(6);
-var canDefineProperty = __webpack_require__(21);
+var warning = __webpack_require__(1);
+var canDefineProperty = __webpack_require__(10);
 var hasOwnProperty = Object.prototype.hasOwnProperty;
 
-var REACT_ELEMENT_TYPE = __webpack_require__(42);
+var REACT_ELEMENT_TYPE = __webpack_require__(26);
 
 var RESERVED_PROPS = {
   key: true,
@@ -703,7 +1435,7 @@ ReactElement.isValidElement = function (object) {
 module.exports = ReactElement;
 
 /***/ }),
-/* 16 */
+/* 8 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -726,7 +1458,7 @@ if (process.env.NODE_ENV !== 'production') {
 module.exports = emptyObject;
 
 /***/ }),
-/* 17 */
+/* 9 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -768,20 +1500,7 @@ function reactProdInvariant(code) {
 module.exports = reactProdInvariant;
 
 /***/ }),
-/* 18 */
-/***/ (function(module, exports) {
-
-module.exports = require("fs");
-
-/***/ }),
-/* 19 */
-/***/ (function(module, exports) {
-
-module.exports = require("stream");
-
-/***/ }),
-/* 20 */,
-/* 21 */
+/* 10 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -810,7 +1529,7 @@ if (process.env.NODE_ENV !== 'production') {
 module.exports = canDefineProperty;
 
 /***/ }),
-/* 22 */
+/* 11 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -842,9 +1561,7 @@ var ReactCurrentOwner = {
 module.exports = ReactCurrentOwner;
 
 /***/ }),
-/* 23 */,
-/* 24 */,
-/* 25 */
+/* 12 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -858,9 +1575,9 @@ module.exports = ReactCurrentOwner;
 
 
 if (process.env.NODE_ENV !== 'production') {
-  var invariant = __webpack_require__(4);
-  var warning = __webpack_require__(6);
-  var ReactPropTypesSecret = __webpack_require__(26);
+  var invariant = __webpack_require__(0);
+  var warning = __webpack_require__(1);
+  var ReactPropTypesSecret = __webpack_require__(13);
   var loggedTypeFailures = {};
 }
 
@@ -910,7 +1627,7 @@ module.exports = checkPropTypes;
 
 
 /***/ }),
-/* 26 */
+/* 13 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -929,7 +1646,7 @@ module.exports = ReactPropTypesSecret;
 
 
 /***/ }),
-/* 27 */
+/* 14 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -997,7 +1714,7 @@ if (process.env.NODE_ENV !== 'production') {
 module.exports = lowPriorityWarning;
 
 /***/ }),
-/* 28 */
+/* 15 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -1012,12 +1729,12 @@ module.exports = lowPriorityWarning;
 
 
 
-var _prodInvariant = __webpack_require__(17);
+var _prodInvariant = __webpack_require__(9);
 
-var ReactCurrentOwner = __webpack_require__(22);
+var ReactCurrentOwner = __webpack_require__(11);
 
-var invariant = __webpack_require__(4);
-var warning = __webpack_require__(6);
+var invariant = __webpack_require__(0);
+var warning = __webpack_require__(1);
 
 function isNative(fn) {
   // Based on isNative() from Lodash
@@ -1379,11 +2096,7 @@ var ReactComponentTreeHook = {
 module.exports = ReactComponentTreeHook;
 
 /***/ }),
-/* 29 */,
-/* 30 */,
-/* 31 */,
-/* 32 */,
-/* 33 */
+/* 16 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -1421,14 +2134,14 @@ if (process.env.NODE_ENV === 'production') {
   // DCE check should happen before ReactDOM bundle executes so that
   // DevTools can report bad minification during injection.
   checkDCE();
-  module.exports = __webpack_require__(63);
+  module.exports = __webpack_require__(39);
 } else {
-  module.exports = __webpack_require__(66);
+  module.exports = __webpack_require__(42);
 }
 
 
 /***/ }),
-/* 34 */
+/* 17 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -1467,7 +2180,7 @@ var ExecutionEnvironment = {
 module.exports = ExecutionEnvironment;
 
 /***/ }),
-/* 35 */
+/* 18 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -1482,7 +2195,7 @@ module.exports = ExecutionEnvironment;
  * @typechecks
  */
 
-var emptyFunction = __webpack_require__(12);
+var emptyFunction = __webpack_require__(4);
 
 /**
  * Upstream version of event listener. Does not take into account specific
@@ -1547,7 +2260,7 @@ var EventListener = {
 module.exports = EventListener;
 
 /***/ }),
-/* 36 */
+/* 19 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -1589,7 +2302,7 @@ function getActiveElement(doc) /*?DOMElement*/{
 module.exports = getActiveElement;
 
 /***/ }),
-/* 37 */
+/* 20 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -1660,7 +2373,7 @@ function shallowEqual(objA, objB) {
 module.exports = shallowEqual;
 
 /***/ }),
-/* 38 */
+/* 21 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -1675,7 +2388,7 @@ module.exports = shallowEqual;
  * 
  */
 
-var isTextNode = __webpack_require__(64);
+var isTextNode = __webpack_require__(40);
 
 /*eslint-disable no-bitwise */
 
@@ -1703,7 +2416,7 @@ function containsNode(outerNode, innerNode) {
 module.exports = containsNode;
 
 /***/ }),
-/* 39 */
+/* 22 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -1733,7 +2446,268 @@ function focusNode(node) {
 module.exports = focusNode;
 
 /***/ }),
-/* 40 */
+/* 23 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+
+var _react = __webpack_require__(49);
+
+var _react2 = _interopRequireDefault(_react);
+
+var _propTypes = __webpack_require__(30);
+
+var _propTypes2 = _interopRequireDefault(_propTypes);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+
+function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
+
+function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
+
+var pendingCalls = [];
+var initialized = false;
+
+var soundManager = void 0;
+if (typeof window !== 'undefined') {
+  soundManager = __webpack_require__(66).soundManager;
+
+  soundManager.onready(function () {
+    pendingCalls.slice().forEach(function (cb) {
+      return cb();
+    });
+  });
+}
+
+function _createSound(options, cb) {
+  if (soundManager.ok()) {
+    cb(soundManager.createSound(options));
+    return function () {};
+  } else {
+    if (!initialized) {
+      initialized = true;
+      soundManager.beginDelayedInit();
+    }
+
+    var call = function call() {
+      cb(soundManager.createSound(options));
+    };
+
+    pendingCalls.push(call);
+
+    return function () {
+      pendingCalls.splice(pendingCalls.indexOf(call), 1);
+    };
+  }
+}
+
+function noop() {}
+
+var playStatuses = {
+  PLAYING: 'PLAYING',
+  STOPPED: 'STOPPED',
+  PAUSED: 'PAUSED'
+};
+
+var Sound = function (_React$Component) {
+  _inherits(Sound, _React$Component);
+
+  function Sound() {
+    _classCallCheck(this, Sound);
+
+    return _possibleConstructorReturn(this, (Sound.__proto__ || Object.getPrototypeOf(Sound)).apply(this, arguments));
+  }
+
+  _createClass(Sound, [{
+    key: 'componentDidMount',
+    value: function componentDidMount() {
+      var _this2 = this;
+
+      this.createSound(function (sound) {
+        if (_this2.props.playStatus === playStatuses.PLAYING) {
+          sound.play();
+        }
+      });
+    }
+  }, {
+    key: 'componentWillUnmount',
+    value: function componentWillUnmount() {
+      this.removeSound();
+    }
+  }, {
+    key: 'componentDidUpdate',
+    value: function componentDidUpdate(prevProps) {
+      var _this3 = this;
+
+      var withSound = function withSound(sound) {
+        if (!sound) {
+          return;
+        }
+
+        if (_this3.props.playStatus === playStatuses.PLAYING) {
+          if (sound.playState === 0) {
+            sound.play();
+          }
+
+          if (sound.paused) {
+            sound.resume();
+          }
+        } else if (_this3.props.playStatus === playStatuses.STOPPED) {
+          if (sound.playState !== 0) {
+            sound.stop();
+          }
+        } else {
+          // this.props.playStatus === playStatuses.PAUSED
+          if (!sound.paused) {
+            sound.pause();
+          }
+        }
+
+        if (_this3.props.playFromPosition !== prevProps.playFromPosition) {
+          sound.setPosition(_this3.props.playFromPosition);
+        }
+
+        if (_this3.props.position != null) {
+          if (sound.position !== _this3.props.position && Math.round(sound.position) !== Math.round(_this3.props.position)) {
+
+            sound.setPosition(_this3.props.position);
+          }
+        }
+
+        if (_this3.props.volume !== prevProps.volume) {
+          sound.setVolume(_this3.props.volume);
+        }
+      };
+
+      if (this.props.url !== prevProps.url) {
+        this.createSound(withSound);
+      } else {
+        withSound(this.sound);
+      }
+    }
+  }, {
+    key: 'createSound',
+    value: function createSound(callback) {
+      var _this4 = this;
+
+      this.removeSound();
+
+      var props = this.props;
+      var that = this;
+
+      if (!props.url) {
+        return;
+      }
+
+      this.stopCreatingSound = _createSound({
+        url: this.props.url,
+        autoLoad: props.autoLoad,
+        volume: props.volume,
+        position: this.props.playFromPosition || this.props.position || 0,
+        whileloading: function whileloading() {
+          props.onLoading(this);
+        },
+        whileplaying: function whileplaying() {
+          props.onPlaying(this);
+        },
+        onerror: function onerror(errorCode, description) {
+          props.onError(errorCode, description, this);
+        },
+        onload: function onload() {
+          props.onLoad(this);
+        },
+        onpause: function onpause() {
+          props.onPause(this);
+        },
+        onresume: function onresume() {
+          props.onResume(this);
+        },
+        onstop: function onstop() {
+          props.onStop(this);
+        },
+        onfinish: function onfinish() {
+          if (that.props.loop && that.props.playStatus === playStatuses.PLAYING) {
+            that.sound.play();
+          } else {
+            props.onFinishedPlaying();
+          }
+        }
+      }, function (sound) {
+        _this4.sound = sound;
+        callback(sound);
+      });
+    }
+  }, {
+    key: 'removeSound',
+    value: function removeSound() {
+      if (this.stopCreatingSound) {
+        this.stopCreatingSound();
+        delete this.stopCreatingSound;
+      }
+
+      if (this.sound) {
+        try {
+          this.sound.destruct();
+        } catch (e) {} // eslint-disable-line
+
+        delete this.sound;
+      }
+    }
+  }, {
+    key: 'render',
+    value: function render() {
+      return null;
+    }
+  }]);
+
+  return Sound;
+}(_react2.default.Component);
+
+Sound.status = playStatuses;
+Sound.propTypes = {
+  url: _propTypes2.default.string.isRequired,
+  playStatus: _propTypes2.default.oneOf(Object.keys(playStatuses)).isRequired,
+  position: _propTypes2.default.number,
+  playFromPosition: _propTypes2.default.number,
+  volume: _propTypes2.default.number,
+  onError: _propTypes2.default.func,
+  onLoading: _propTypes2.default.func,
+  onLoad: _propTypes2.default.func,
+  onPlaying: _propTypes2.default.func,
+  onPause: _propTypes2.default.func,
+  onResume: _propTypes2.default.func,
+  onStop: _propTypes2.default.func,
+  onFinishedPlaying: _propTypes2.default.func,
+  autoLoad: _propTypes2.default.bool,
+  loop: _propTypes2.default.bool
+};
+Sound.defaultProps = {
+  playFromPosition: 0,
+  volume: 100,
+  onError: noop,
+  onLoading: noop,
+  onPlaying: noop,
+  onLoad: noop,
+  onPause: noop,
+  onResume: noop,
+  onStop: noop,
+  onFinishedPlaying: noop,
+  autoLoad: false,
+  loop: false
+};
+exports.default = Sound;
+
+/***/ }),
+/* 24 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -1747,15 +2721,15 @@ module.exports = focusNode;
 
 
 
-var _prodInvariant = __webpack_require__(17),
-    _assign = __webpack_require__(11);
+var _prodInvariant = __webpack_require__(9),
+    _assign = __webpack_require__(3);
 
-var ReactNoopUpdateQueue = __webpack_require__(41);
+var ReactNoopUpdateQueue = __webpack_require__(25);
 
-var canDefineProperty = __webpack_require__(21);
-var emptyObject = __webpack_require__(16);
-var invariant = __webpack_require__(4);
-var lowPriorityWarning = __webpack_require__(27);
+var canDefineProperty = __webpack_require__(10);
+var emptyObject = __webpack_require__(8);
+var invariant = __webpack_require__(0);
+var lowPriorityWarning = __webpack_require__(14);
 
 /**
  * Base class helpers for the updating state of a component.
@@ -1879,7 +2853,7 @@ module.exports = {
 };
 
 /***/ }),
-/* 41 */
+/* 25 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -1893,7 +2867,7 @@ module.exports = {
 
 
 
-var warning = __webpack_require__(6);
+var warning = __webpack_require__(1);
 
 function warnNoop(publicInstance, callerName) {
   if (process.env.NODE_ENV !== 'production') {
@@ -1977,7 +2951,7 @@ var ReactNoopUpdateQueue = {
 module.exports = ReactNoopUpdateQueue;
 
 /***/ }),
-/* 42 */
+/* 26 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -2000,7 +2974,7 @@ var REACT_ELEMENT_TYPE = typeof Symbol === 'function' && Symbol['for'] && Symbol
 module.exports = REACT_ELEMENT_TYPE;
 
 /***/ }),
-/* 43 */
+/* 27 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -2044,7 +3018,7 @@ function getIteratorFn(maybeIterable) {
 module.exports = getIteratorFn;
 
 /***/ }),
-/* 44 */
+/* 28 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -2065,16 +3039,16 @@ module.exports = getIteratorFn;
 
 
 
-var ReactCurrentOwner = __webpack_require__(22);
-var ReactComponentTreeHook = __webpack_require__(28);
-var ReactElement = __webpack_require__(15);
+var ReactCurrentOwner = __webpack_require__(11);
+var ReactComponentTreeHook = __webpack_require__(15);
+var ReactElement = __webpack_require__(7);
 
-var checkReactTypeSpec = __webpack_require__(80);
+var checkReactTypeSpec = __webpack_require__(56);
 
-var canDefineProperty = __webpack_require__(21);
-var getIteratorFn = __webpack_require__(43);
-var warning = __webpack_require__(6);
-var lowPriorityWarning = __webpack_require__(27);
+var canDefineProperty = __webpack_require__(10);
+var getIteratorFn = __webpack_require__(27);
+var warning = __webpack_require__(1);
+var lowPriorityWarning = __webpack_require__(14);
 
 function getDeclarationErrorAddendum() {
   if (ReactCurrentOwner.current) {
@@ -2302,7 +3276,7 @@ var ReactElementValidator = {
 module.exports = ReactElementValidator;
 
 /***/ }),
-/* 45 */
+/* 29 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -2315,13 +3289,13 @@ module.exports = ReactElementValidator;
 
 
 
-var emptyFunction = __webpack_require__(12);
-var invariant = __webpack_require__(4);
-var warning = __webpack_require__(6);
-var assign = __webpack_require__(11);
+var emptyFunction = __webpack_require__(4);
+var invariant = __webpack_require__(0);
+var warning = __webpack_require__(1);
+var assign = __webpack_require__(3);
 
-var ReactPropTypesSecret = __webpack_require__(26);
-var checkPropTypes = __webpack_require__(25);
+var ReactPropTypesSecret = __webpack_require__(13);
+var checkPropTypes = __webpack_require__(12);
 
 module.exports = function(isValidElement, throwOnDirectAccess) {
   /* global Symbol */
@@ -2851,7 +3825,7 @@ module.exports = function(isValidElement, throwOnDirectAccess) {
 
 
 /***/ }),
-/* 46 */
+/* 30 */
 /***/ (function(module, exports, __webpack_require__) {
 
 /**
@@ -2876,29 +3850,281 @@ if (process.env.NODE_ENV !== 'production') {
   // By explicitly using `prop-types` you are opting into new development behavior.
   // http://fb.me/prop-types-in-prod
   var throwOnDirectAccess = true;
-  module.exports = __webpack_require__(45)(isValidElement, throwOnDirectAccess);
+  module.exports = __webpack_require__(29)(isValidElement, throwOnDirectAccess);
 } else {
   // By explicitly using `prop-types` you are opting into new production behavior.
   // http://fb.me/prop-types-in-prod
-  module.exports = __webpack_require__(89)();
+  module.exports = __webpack_require__(65)();
 }
 
 
 /***/ }),
-/* 47 */,
-/* 48 */,
-/* 49 */,
-/* 50 */,
-/* 51 */,
-/* 52 */,
-/* 53 */,
-/* 54 */,
-/* 55 */,
-/* 56 */,
-/* 57 */,
-/* 58 */,
-/* 59 */,
-/* 60 */
+/* 31 */
+/***/ (function(module, exports) {
+
+module.exports = require("fs");
+
+/***/ }),
+/* 32 */
+/***/ (function(module, exports) {
+
+module.exports = require("events");
+
+/***/ }),
+/* 33 */
+/***/ (function(module, exports) {
+
+module.exports = require("buffer");
+
+/***/ }),
+/* 34 */
+/***/ (function(module, exports, __webpack_require__) {
+
+var pSlice = Array.prototype.slice;
+var objectKeys = __webpack_require__(71);
+var isArguments = __webpack_require__(72);
+
+var deepEqual = module.exports = function (actual, expected, opts) {
+  if (!opts) opts = {};
+  // 7.1. All identical values are equivalent, as determined by ===.
+  if (actual === expected) {
+    return true;
+
+  } else if (actual instanceof Date && expected instanceof Date) {
+    return actual.getTime() === expected.getTime();
+
+  // 7.3. Other pairs that do not both pass typeof value == 'object',
+  // equivalence is determined by ==.
+  } else if (typeof actual != 'object' && typeof expected != 'object') {
+    return opts.strict ? actual === expected : actual == expected;
+
+  // 7.4. For all other Object pairs, including Array objects, equivalence is
+  // determined by having the same number of owned properties (as verified
+  // with Object.prototype.hasOwnProperty.call), the same set of keys
+  // (although not necessarily the same order), equivalent values for every
+  // corresponding key, and an identical 'prototype' property. Note: this
+  // accounts for both named and indexed properties on Arrays.
+  } else {
+    return objEquiv(actual, expected, opts);
+  }
+}
+
+function isUndefinedOrNull(value) {
+  return value === null || value === undefined;
+}
+
+function isBuffer (x) {
+  if (!x || typeof x !== 'object' || typeof x.length !== 'number') return false;
+  if (typeof x.copy !== 'function' || typeof x.slice !== 'function') {
+    return false;
+  }
+  if (x.length > 0 && typeof x[0] !== 'number') return false;
+  return true;
+}
+
+function objEquiv(a, b, opts) {
+  var i, key;
+  if (isUndefinedOrNull(a) || isUndefinedOrNull(b))
+    return false;
+  // an identical 'prototype' property.
+  if (a.prototype !== b.prototype) return false;
+  //~~~I've managed to break Object.keys through screwy arguments passing.
+  //   Converting to array solves the problem.
+  if (isArguments(a)) {
+    if (!isArguments(b)) {
+      return false;
+    }
+    a = pSlice.call(a);
+    b = pSlice.call(b);
+    return deepEqual(a, b, opts);
+  }
+  if (isBuffer(a)) {
+    if (!isBuffer(b)) {
+      return false;
+    }
+    if (a.length !== b.length) return false;
+    for (i = 0; i < a.length; i++) {
+      if (a[i] !== b[i]) return false;
+    }
+    return true;
+  }
+  try {
+    var ka = objectKeys(a),
+        kb = objectKeys(b);
+  } catch (e) {//happens when one is a string literal and the other isn't
+    return false;
+  }
+  // having the same number of owned properties (keys incorporates
+  // hasOwnProperty)
+  if (ka.length != kb.length)
+    return false;
+  //the same set of keys (although not necessarily the same order),
+  ka.sort();
+  kb.sort();
+  //~~~cheap key test
+  for (i = ka.length - 1; i >= 0; i--) {
+    if (ka[i] != kb[i])
+      return false;
+  }
+  //equivalent values for every corresponding key, and
+  //~~~possibly expensive deep test
+  for (i = ka.length - 1; i >= 0; i--) {
+    key = ka[i];
+    if (!deepEqual(a[key], b[key], opts)) return false;
+  }
+  return true;
+}
+
+
+/***/ }),
+/* 35 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+var strtok = __webpack_require__(6)
+var common = __webpack_require__(5)
+
+module.exports = function (stream, callback, done, readDuration) {
+  strtok.parse(stream, function (v, cb) {
+    // the very first thing we expect to see is the first atom's length
+    if (!v) {
+      cb.metaAtomsTotalLength = 0
+      cb.state = 0
+      return strtok.UINT32_BE
+    }
+
+    switch (cb.state) {
+      case -1: // skip
+        cb.state = 0
+        return strtok.UINT32_BE
+
+      case 0: // atom length
+        cb.atomLength = v
+        cb.state++
+        return new strtok.BufferType(4)
+
+      case 1: // atom name
+        v = v.toString('binary')
+        cb.atomName = v
+
+        // meta has 4 bytes padding at the start (skip)
+        if (v === 'meta') {
+          cb.state = -1
+          return new strtok.IgnoreType(4)
+        }
+
+        if (readDuration) {
+          if (v === 'mdhd') {
+            cb.state = 3
+            return new strtok.BufferType(cb.atomLength - 8)
+          }
+        }
+
+        if (!~CONTAINER_ATOMS.indexOf(v)) {
+          if (cb.atomContainer === 'ilst') {
+            cb.state = 2
+            return new strtok.BufferType(cb.atomLength - 8)
+          }
+          cb.state = -1
+          return new strtok.IgnoreType(cb.atomLength - 8)
+        }
+
+        // dig into container atoms
+        cb.atomContainer = v
+        cb.atomContainerLength = cb.atomLength
+        cb.state--
+        return strtok.UINT32_BE
+
+      case 2: // ilst atom
+        cb.metaAtomsTotalLength += cb.atomLength
+        var result = processMetaAtom(v, cb.atomName, cb.atomLength - 8)
+        if (result.length > 0) {
+          for (var i = 0; i < result.length; i++) {
+            callback(cb.atomName, result[i])
+          }
+        }
+
+        // we can stop processing atoms once we get to the end of the ilst atom
+        if (cb.metaAtomsTotalLength >= cb.atomContainerLength - 8) {
+          return done()
+        }
+
+        cb.state = 0
+        return strtok.UINT32_BE
+
+      case 3: // mdhd atom
+        // TODO: support version 1
+        var sampleRate = v.readUInt32BE(12)
+        var duration = v.readUInt32BE(16)
+        callback('duration', duration / sampleRate)
+        cb.state = 0
+        return strtok.UINT32_BE
+    }
+
+    // if we ever get this this point something bad has happened
+    return done(new Error('error parsing'))
+  })
+}
+
+function processMetaAtom (data, atomName, atomLength) {
+  var result = []
+  var offset = 0
+
+  // ignore proprietary iTunes atoms (for now)
+  if (atomName === '----') return result
+
+  while (offset < atomLength) {
+    var length = strtok.UINT32_BE.get(data, offset)
+    var type = TYPES[strtok.UINT32_BE.get(data, offset + 8)]
+
+    var content = processMetaDataAtom(data.slice(offset + 12, offset + length), type, atomName)
+
+    result.push(content)
+    offset += length
+  }
+
+  return result
+
+  function processMetaDataAtom (data, type, atomName) {
+    switch (type) {
+      case 'text':
+        return data.toString('utf8', 4)
+
+      case 'uint8':
+        if (atomName === 'gnre') {
+          var genreInt = strtok.UINT8.get(data, 5)
+          return common.GENRES[genreInt - 1]
+        }
+        if (atomName === 'trkn' || atomName === 'disk') {
+          return data[7] + '/' + data[9]
+        }
+
+        return strtok.UINT8.get(data, 4)
+
+      case 'jpeg':
+      case 'png':
+        return {
+          format: 'image/' + type,
+          data: new Buffer(data.slice(4))
+        }
+    }
+  }
+}
+
+var TYPES = {
+  '0': 'uint8',
+  '1': 'text',
+  '13': 'jpeg',
+  '14': 'png',
+  '21': 'uint8'
+}
+
+var CONTAINER_ATOMS = ['moov', 'udta', 'meta', 'ilst', 'trak', 'mdia']
+
+
+/***/ }),
+/* 36 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -2906,17 +4132,17 @@ if (process.env.NODE_ENV !== 'production') {
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
-var _react = __webpack_require__(9);
+var _react = __webpack_require__(2);
 
 var _react2 = _interopRequireDefault(_react);
 
-var _reactDom = __webpack_require__(33);
+var _reactDom = __webpack_require__(16);
 
 var _reactDom2 = _interopRequireDefault(_reactDom);
 
-__webpack_require__(178);
+__webpack_require__(47);
 
-var _app = __webpack_require__(71);
+var _app = __webpack_require__(48);
 
 var _app2 = _interopRequireDefault(_app);
 
@@ -2950,7 +4176,7 @@ var App = function (_React$Component) {
 _reactDom2.default.render(_react2.default.createElement(App, null), document.getElementById('content')); // eslint-disable-line
 
 /***/ }),
-/* 61 */
+/* 37 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -2963,7 +4189,7 @@ _reactDom2.default.render(_react2.default.createElement(App, null), document.get
  * LICENSE file in the root directory of this source tree.
  */
 
-var m=__webpack_require__(11),n=__webpack_require__(16),p=__webpack_require__(12),q="function"===typeof Symbol&&Symbol["for"],r=q?Symbol["for"]("react.element"):60103,t=q?Symbol["for"]("react.call"):60104,u=q?Symbol["for"]("react.return"):60105,v=q?Symbol["for"]("react.portal"):60106,w=q?Symbol["for"]("react.fragment"):60107,x="function"===typeof Symbol&&Symbol.iterator;
+var m=__webpack_require__(3),n=__webpack_require__(8),p=__webpack_require__(4),q="function"===typeof Symbol&&Symbol["for"],r=q?Symbol["for"]("react.element"):60103,t=q?Symbol["for"]("react.call"):60104,u=q?Symbol["for"]("react.return"):60105,v=q?Symbol["for"]("react.portal"):60106,w=q?Symbol["for"]("react.fragment"):60107,x="function"===typeof Symbol&&Symbol.iterator;
 function y(a){for(var b=arguments.length-1,e="Minified React error #"+a+"; visit http://facebook.github.io/react/docs/error-decoder.html?invariant\x3d"+a,c=0;c<b;c++)e+="\x26args[]\x3d"+encodeURIComponent(arguments[c+1]);b=Error(e+" for the full message or use the non-minified dev environment for full errors and additional helpful warnings.");b.name="Invariant Violation";b.framesToPop=1;throw b;}
 var z={isMounted:function(){return!1},enqueueForceUpdate:function(){},enqueueReplaceState:function(){},enqueueSetState:function(){}};function A(a,b,e){this.props=a;this.context=b;this.refs=n;this.updater=e||z}A.prototype.isReactComponent={};A.prototype.setState=function(a,b){"object"!==typeof a&&"function"!==typeof a&&null!=a?y("85"):void 0;this.updater.enqueueSetState(this,a,b,"setState")};A.prototype.forceUpdate=function(a){this.updater.enqueueForceUpdate(this,a,"forceUpdate")};
 function B(a,b,e){this.props=a;this.context=b;this.refs=n;this.updater=e||z}function C(){}C.prototype=A.prototype;var D=B.prototype=new C;D.constructor=B;m(D,A.prototype);D.isPureReactComponent=!0;function E(a,b,e){this.props=a;this.context=b;this.refs=n;this.updater=e||z}var F=E.prototype=new C;F.constructor=E;m(F,A.prototype);F.unstable_isAsyncReactComponent=!0;F.render=function(){return this.props.children};var G={current:null},H=Object.prototype.hasOwnProperty,I={key:!0,ref:!0,__self:!0,__source:!0};
@@ -2978,7 +4204,7 @@ isValidElement:K,version:"16.2.0",__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_F
 
 
 /***/ }),
-/* 62 */
+/* 38 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -2999,12 +4225,12 @@ if (process.env.NODE_ENV !== "production") {
   (function() {
 'use strict';
 
-var _assign = __webpack_require__(11);
-var emptyObject = __webpack_require__(16);
-var invariant = __webpack_require__(4);
-var warning = __webpack_require__(6);
-var emptyFunction = __webpack_require__(12);
-var checkPropTypes = __webpack_require__(25);
+var _assign = __webpack_require__(3);
+var emptyObject = __webpack_require__(8);
+var invariant = __webpack_require__(0);
+var warning = __webpack_require__(1);
+var emptyFunction = __webpack_require__(4);
+var checkPropTypes = __webpack_require__(12);
 
 // TODO: this is special because it gets imported during build.
 
@@ -4342,7 +5568,7 @@ module.exports = react;
 
 
 /***/ }),
-/* 63 */
+/* 39 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -4358,7 +5584,7 @@ module.exports = react;
 /*
  Modernizr 3.0.0pre (Custom Build) | MIT
 */
-var aa=__webpack_require__(9),l=__webpack_require__(34),B=__webpack_require__(11),C=__webpack_require__(12),ba=__webpack_require__(35),da=__webpack_require__(36),ea=__webpack_require__(37),fa=__webpack_require__(38),ia=__webpack_require__(39),D=__webpack_require__(16);
+var aa=__webpack_require__(2),l=__webpack_require__(17),B=__webpack_require__(3),C=__webpack_require__(4),ba=__webpack_require__(18),da=__webpack_require__(19),ea=__webpack_require__(20),fa=__webpack_require__(21),ia=__webpack_require__(22),D=__webpack_require__(8);
 function E(a){for(var b=arguments.length-1,c="Minified React error #"+a+"; visit http://facebook.github.io/react/docs/error-decoder.html?invariant\x3d"+a,d=0;d<b;d++)c+="\x26args[]\x3d"+encodeURIComponent(arguments[d+1]);b=Error(c+" for the full message or use the non-minified dev environment for full errors and additional helpful warnings.");b.name="Invariant Violation";b.framesToPop=1;throw b;}aa?void 0:E("227");
 var oa={children:!0,dangerouslySetInnerHTML:!0,defaultValue:!0,defaultChecked:!0,innerHTML:!0,suppressContentEditableWarning:!0,suppressHydrationWarning:!0,style:!0};function pa(a,b){return(a&b)===b}
 var ta={MUST_USE_PROPERTY:1,HAS_BOOLEAN_VALUE:4,HAS_NUMERIC_VALUE:8,HAS_POSITIVE_NUMERIC_VALUE:24,HAS_OVERLOADED_BOOLEAN_VALUE:32,HAS_STRING_BOOLEAN_VALUE:64,injectDOMPropertyConfig:function(a){var b=ta,c=a.Properties||{},d=a.DOMAttributeNamespaces||{},e=a.DOMAttributeNames||{};a=a.DOMMutationMethods||{};for(var f in c){ua.hasOwnProperty(f)?E("48",f):void 0;var g=f.toLowerCase(),h=c[f];g={attributeName:g,attributeNamespace:null,propertyName:f,mutationMethod:null,mustUseProperty:pa(h,b.MUST_USE_PROPERTY),
@@ -4578,7 +5804,7 @@ Z.injectIntoDevTools({findFiberByHostInstance:pb,bundleType:0,version:"16.2.0",r
 
 
 /***/ }),
-/* 64 */
+/* 40 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -4593,7 +5819,7 @@ Z.injectIntoDevTools({findFiberByHostInstance:pb,bundleType:0,version:"16.2.0",r
  * @typechecks
  */
 
-var isNode = __webpack_require__(65);
+var isNode = __webpack_require__(41);
 
 /**
  * @param {*} object The object to check.
@@ -4606,7 +5832,7 @@ function isTextNode(object) {
 module.exports = isTextNode;
 
 /***/ }),
-/* 65 */
+/* 41 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -4634,7 +5860,7 @@ function isNode(object) {
 module.exports = isNode;
 
 /***/ }),
-/* 66 */
+/* 42 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -4655,21 +5881,21 @@ if (process.env.NODE_ENV !== "production") {
   (function() {
 'use strict';
 
-var React = __webpack_require__(9);
-var invariant = __webpack_require__(4);
-var warning = __webpack_require__(6);
-var ExecutionEnvironment = __webpack_require__(34);
-var _assign = __webpack_require__(11);
-var emptyFunction = __webpack_require__(12);
-var EventListener = __webpack_require__(35);
-var getActiveElement = __webpack_require__(36);
-var shallowEqual = __webpack_require__(37);
-var containsNode = __webpack_require__(38);
-var focusNode = __webpack_require__(39);
-var emptyObject = __webpack_require__(16);
-var checkPropTypes = __webpack_require__(25);
-var hyphenateStyleName = __webpack_require__(67);
-var camelizeStyleName = __webpack_require__(69);
+var React = __webpack_require__(2);
+var invariant = __webpack_require__(0);
+var warning = __webpack_require__(1);
+var ExecutionEnvironment = __webpack_require__(17);
+var _assign = __webpack_require__(3);
+var emptyFunction = __webpack_require__(4);
+var EventListener = __webpack_require__(18);
+var getActiveElement = __webpack_require__(19);
+var shallowEqual = __webpack_require__(20);
+var containsNode = __webpack_require__(21);
+var focusNode = __webpack_require__(22);
+var emptyObject = __webpack_require__(8);
+var checkPropTypes = __webpack_require__(12);
+var hyphenateStyleName = __webpack_require__(43);
+var camelizeStyleName = __webpack_require__(45);
 
 /**
  * WARNING: DO NOT manually require this module.
@@ -20035,7 +21261,7 @@ module.exports = reactDom;
 
 
 /***/ }),
-/* 67 */
+/* 43 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -20050,7 +21276,7 @@ module.exports = reactDom;
 
 
 
-var hyphenate = __webpack_require__(68);
+var hyphenate = __webpack_require__(44);
 
 var msPattern = /^ms-/;
 
@@ -20077,7 +21303,7 @@ function hyphenateStyleName(string) {
 module.exports = hyphenateStyleName;
 
 /***/ }),
-/* 68 */
+/* 44 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -20113,7 +21339,7 @@ function hyphenate(string) {
 module.exports = hyphenate;
 
 /***/ }),
-/* 69 */
+/* 45 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -20128,7 +21354,7 @@ module.exports = hyphenate;
 
 
 
-var camelize = __webpack_require__(70);
+var camelize = __webpack_require__(46);
 
 var msPattern = /^-ms-/;
 
@@ -20156,7 +21382,7 @@ function camelizeStyleName(string) {
 module.exports = camelizeStyleName;
 
 /***/ }),
-/* 70 */
+/* 46 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -20191,7 +21417,743 @@ function camelize(string) {
 module.exports = camelize;
 
 /***/ }),
-/* 71 */
+/* 47 */
+/***/ (function(module, exports) {
+
+/**
+ * Copyright (c) 2014, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * https://raw.github.com/facebook/regenerator/master/LICENSE file. An
+ * additional grant of patent rights can be found in the PATENTS file in
+ * the same directory.
+ */
+
+!(function(global) {
+  "use strict";
+
+  var Op = Object.prototype;
+  var hasOwn = Op.hasOwnProperty;
+  var undefined; // More compressible than void 0.
+  var $Symbol = typeof Symbol === "function" ? Symbol : {};
+  var iteratorSymbol = $Symbol.iterator || "@@iterator";
+  var asyncIteratorSymbol = $Symbol.asyncIterator || "@@asyncIterator";
+  var toStringTagSymbol = $Symbol.toStringTag || "@@toStringTag";
+
+  var inModule = typeof module === "object";
+  var runtime = global.regeneratorRuntime;
+  if (runtime) {
+    if (inModule) {
+      // If regeneratorRuntime is defined globally and we're in a module,
+      // make the exports object identical to regeneratorRuntime.
+      module.exports = runtime;
+    }
+    // Don't bother evaluating the rest of this file if the runtime was
+    // already defined globally.
+    return;
+  }
+
+  // Define the runtime globally (as expected by generated code) as either
+  // module.exports (if we're in a module) or a new, empty object.
+  runtime = global.regeneratorRuntime = inModule ? module.exports : {};
+
+  function wrap(innerFn, outerFn, self, tryLocsList) {
+    // If outerFn provided and outerFn.prototype is a Generator, then outerFn.prototype instanceof Generator.
+    var protoGenerator = outerFn && outerFn.prototype instanceof Generator ? outerFn : Generator;
+    var generator = Object.create(protoGenerator.prototype);
+    var context = new Context(tryLocsList || []);
+
+    // The ._invoke method unifies the implementations of the .next,
+    // .throw, and .return methods.
+    generator._invoke = makeInvokeMethod(innerFn, self, context);
+
+    return generator;
+  }
+  runtime.wrap = wrap;
+
+  // Try/catch helper to minimize deoptimizations. Returns a completion
+  // record like context.tryEntries[i].completion. This interface could
+  // have been (and was previously) designed to take a closure to be
+  // invoked without arguments, but in all the cases we care about we
+  // already have an existing method we want to call, so there's no need
+  // to create a new function object. We can even get away with assuming
+  // the method takes exactly one argument, since that happens to be true
+  // in every case, so we don't have to touch the arguments object. The
+  // only additional allocation required is the completion record, which
+  // has a stable shape and so hopefully should be cheap to allocate.
+  function tryCatch(fn, obj, arg) {
+    try {
+      return { type: "normal", arg: fn.call(obj, arg) };
+    } catch (err) {
+      return { type: "throw", arg: err };
+    }
+  }
+
+  var GenStateSuspendedStart = "suspendedStart";
+  var GenStateSuspendedYield = "suspendedYield";
+  var GenStateExecuting = "executing";
+  var GenStateCompleted = "completed";
+
+  // Returning this object from the innerFn has the same effect as
+  // breaking out of the dispatch switch statement.
+  var ContinueSentinel = {};
+
+  // Dummy constructor functions that we use as the .constructor and
+  // .constructor.prototype properties for functions that return Generator
+  // objects. For full spec compliance, you may wish to configure your
+  // minifier not to mangle the names of these two functions.
+  function Generator() {}
+  function GeneratorFunction() {}
+  function GeneratorFunctionPrototype() {}
+
+  // This is a polyfill for %IteratorPrototype% for environments that
+  // don't natively support it.
+  var IteratorPrototype = {};
+  IteratorPrototype[iteratorSymbol] = function () {
+    return this;
+  };
+
+  var getProto = Object.getPrototypeOf;
+  var NativeIteratorPrototype = getProto && getProto(getProto(values([])));
+  if (NativeIteratorPrototype &&
+      NativeIteratorPrototype !== Op &&
+      hasOwn.call(NativeIteratorPrototype, iteratorSymbol)) {
+    // This environment has a native %IteratorPrototype%; use it instead
+    // of the polyfill.
+    IteratorPrototype = NativeIteratorPrototype;
+  }
+
+  var Gp = GeneratorFunctionPrototype.prototype =
+    Generator.prototype = Object.create(IteratorPrototype);
+  GeneratorFunction.prototype = Gp.constructor = GeneratorFunctionPrototype;
+  GeneratorFunctionPrototype.constructor = GeneratorFunction;
+  GeneratorFunctionPrototype[toStringTagSymbol] =
+    GeneratorFunction.displayName = "GeneratorFunction";
+
+  // Helper for defining the .next, .throw, and .return methods of the
+  // Iterator interface in terms of a single ._invoke method.
+  function defineIteratorMethods(prototype) {
+    ["next", "throw", "return"].forEach(function(method) {
+      prototype[method] = function(arg) {
+        return this._invoke(method, arg);
+      };
+    });
+  }
+
+  runtime.isGeneratorFunction = function(genFun) {
+    var ctor = typeof genFun === "function" && genFun.constructor;
+    return ctor
+      ? ctor === GeneratorFunction ||
+        // For the native GeneratorFunction constructor, the best we can
+        // do is to check its .name property.
+        (ctor.displayName || ctor.name) === "GeneratorFunction"
+      : false;
+  };
+
+  runtime.mark = function(genFun) {
+    if (Object.setPrototypeOf) {
+      Object.setPrototypeOf(genFun, GeneratorFunctionPrototype);
+    } else {
+      genFun.__proto__ = GeneratorFunctionPrototype;
+      if (!(toStringTagSymbol in genFun)) {
+        genFun[toStringTagSymbol] = "GeneratorFunction";
+      }
+    }
+    genFun.prototype = Object.create(Gp);
+    return genFun;
+  };
+
+  // Within the body of any async function, `await x` is transformed to
+  // `yield regeneratorRuntime.awrap(x)`, so that the runtime can test
+  // `hasOwn.call(value, "__await")` to determine if the yielded value is
+  // meant to be awaited.
+  runtime.awrap = function(arg) {
+    return { __await: arg };
+  };
+
+  function AsyncIterator(generator) {
+    function invoke(method, arg, resolve, reject) {
+      var record = tryCatch(generator[method], generator, arg);
+      if (record.type === "throw") {
+        reject(record.arg);
+      } else {
+        var result = record.arg;
+        var value = result.value;
+        if (value &&
+            typeof value === "object" &&
+            hasOwn.call(value, "__await")) {
+          return Promise.resolve(value.__await).then(function(value) {
+            invoke("next", value, resolve, reject);
+          }, function(err) {
+            invoke("throw", err, resolve, reject);
+          });
+        }
+
+        return Promise.resolve(value).then(function(unwrapped) {
+          // When a yielded Promise is resolved, its final value becomes
+          // the .value of the Promise<{value,done}> result for the
+          // current iteration. If the Promise is rejected, however, the
+          // result for this iteration will be rejected with the same
+          // reason. Note that rejections of yielded Promises are not
+          // thrown back into the generator function, as is the case
+          // when an awaited Promise is rejected. This difference in
+          // behavior between yield and await is important, because it
+          // allows the consumer to decide what to do with the yielded
+          // rejection (swallow it and continue, manually .throw it back
+          // into the generator, abandon iteration, whatever). With
+          // await, by contrast, there is no opportunity to examine the
+          // rejection reason outside the generator function, so the
+          // only option is to throw it from the await expression, and
+          // let the generator function handle the exception.
+          result.value = unwrapped;
+          resolve(result);
+        }, reject);
+      }
+    }
+
+    var previousPromise;
+
+    function enqueue(method, arg) {
+      function callInvokeWithMethodAndArg() {
+        return new Promise(function(resolve, reject) {
+          invoke(method, arg, resolve, reject);
+        });
+      }
+
+      return previousPromise =
+        // If enqueue has been called before, then we want to wait until
+        // all previous Promises have been resolved before calling invoke,
+        // so that results are always delivered in the correct order. If
+        // enqueue has not been called before, then it is important to
+        // call invoke immediately, without waiting on a callback to fire,
+        // so that the async generator function has the opportunity to do
+        // any necessary setup in a predictable way. This predictability
+        // is why the Promise constructor synchronously invokes its
+        // executor callback, and why async functions synchronously
+        // execute code before the first await. Since we implement simple
+        // async functions in terms of async generators, it is especially
+        // important to get this right, even though it requires care.
+        previousPromise ? previousPromise.then(
+          callInvokeWithMethodAndArg,
+          // Avoid propagating failures to Promises returned by later
+          // invocations of the iterator.
+          callInvokeWithMethodAndArg
+        ) : callInvokeWithMethodAndArg();
+    }
+
+    // Define the unified helper method that is used to implement .next,
+    // .throw, and .return (see defineIteratorMethods).
+    this._invoke = enqueue;
+  }
+
+  defineIteratorMethods(AsyncIterator.prototype);
+  AsyncIterator.prototype[asyncIteratorSymbol] = function () {
+    return this;
+  };
+  runtime.AsyncIterator = AsyncIterator;
+
+  // Note that simple async functions are implemented on top of
+  // AsyncIterator objects; they just return a Promise for the value of
+  // the final result produced by the iterator.
+  runtime.async = function(innerFn, outerFn, self, tryLocsList) {
+    var iter = new AsyncIterator(
+      wrap(innerFn, outerFn, self, tryLocsList)
+    );
+
+    return runtime.isGeneratorFunction(outerFn)
+      ? iter // If outerFn is a generator, return the full iterator.
+      : iter.next().then(function(result) {
+          return result.done ? result.value : iter.next();
+        });
+  };
+
+  function makeInvokeMethod(innerFn, self, context) {
+    var state = GenStateSuspendedStart;
+
+    return function invoke(method, arg) {
+      if (state === GenStateExecuting) {
+        throw new Error("Generator is already running");
+      }
+
+      if (state === GenStateCompleted) {
+        if (method === "throw") {
+          throw arg;
+        }
+
+        // Be forgiving, per 25.3.3.3.3 of the spec:
+        // https://people.mozilla.org/~jorendorff/es6-draft.html#sec-generatorresume
+        return doneResult();
+      }
+
+      context.method = method;
+      context.arg = arg;
+
+      while (true) {
+        var delegate = context.delegate;
+        if (delegate) {
+          var delegateResult = maybeInvokeDelegate(delegate, context);
+          if (delegateResult) {
+            if (delegateResult === ContinueSentinel) continue;
+            return delegateResult;
+          }
+        }
+
+        if (context.method === "next") {
+          // Setting context._sent for legacy support of Babel's
+          // function.sent implementation.
+          context.sent = context._sent = context.arg;
+
+        } else if (context.method === "throw") {
+          if (state === GenStateSuspendedStart) {
+            state = GenStateCompleted;
+            throw context.arg;
+          }
+
+          context.dispatchException(context.arg);
+
+        } else if (context.method === "return") {
+          context.abrupt("return", context.arg);
+        }
+
+        state = GenStateExecuting;
+
+        var record = tryCatch(innerFn, self, context);
+        if (record.type === "normal") {
+          // If an exception is thrown from innerFn, we leave state ===
+          // GenStateExecuting and loop back for another invocation.
+          state = context.done
+            ? GenStateCompleted
+            : GenStateSuspendedYield;
+
+          if (record.arg === ContinueSentinel) {
+            continue;
+          }
+
+          return {
+            value: record.arg,
+            done: context.done
+          };
+
+        } else if (record.type === "throw") {
+          state = GenStateCompleted;
+          // Dispatch the exception by looping back around to the
+          // context.dispatchException(context.arg) call above.
+          context.method = "throw";
+          context.arg = record.arg;
+        }
+      }
+    };
+  }
+
+  // Call delegate.iterator[context.method](context.arg) and handle the
+  // result, either by returning a { value, done } result from the
+  // delegate iterator, or by modifying context.method and context.arg,
+  // setting context.delegate to null, and returning the ContinueSentinel.
+  function maybeInvokeDelegate(delegate, context) {
+    var method = delegate.iterator[context.method];
+    if (method === undefined) {
+      // A .throw or .return when the delegate iterator has no .throw
+      // method always terminates the yield* loop.
+      context.delegate = null;
+
+      if (context.method === "throw") {
+        if (delegate.iterator.return) {
+          // If the delegate iterator has a return method, give it a
+          // chance to clean up.
+          context.method = "return";
+          context.arg = undefined;
+          maybeInvokeDelegate(delegate, context);
+
+          if (context.method === "throw") {
+            // If maybeInvokeDelegate(context) changed context.method from
+            // "return" to "throw", let that override the TypeError below.
+            return ContinueSentinel;
+          }
+        }
+
+        context.method = "throw";
+        context.arg = new TypeError(
+          "The iterator does not provide a 'throw' method");
+      }
+
+      return ContinueSentinel;
+    }
+
+    var record = tryCatch(method, delegate.iterator, context.arg);
+
+    if (record.type === "throw") {
+      context.method = "throw";
+      context.arg = record.arg;
+      context.delegate = null;
+      return ContinueSentinel;
+    }
+
+    var info = record.arg;
+
+    if (! info) {
+      context.method = "throw";
+      context.arg = new TypeError("iterator result is not an object");
+      context.delegate = null;
+      return ContinueSentinel;
+    }
+
+    if (info.done) {
+      // Assign the result of the finished delegate to the temporary
+      // variable specified by delegate.resultName (see delegateYield).
+      context[delegate.resultName] = info.value;
+
+      // Resume execution at the desired location (see delegateYield).
+      context.next = delegate.nextLoc;
+
+      // If context.method was "throw" but the delegate handled the
+      // exception, let the outer generator proceed normally. If
+      // context.method was "next", forget context.arg since it has been
+      // "consumed" by the delegate iterator. If context.method was
+      // "return", allow the original .return call to continue in the
+      // outer generator.
+      if (context.method !== "return") {
+        context.method = "next";
+        context.arg = undefined;
+      }
+
+    } else {
+      // Re-yield the result returned by the delegate method.
+      return info;
+    }
+
+    // The delegate iterator is finished, so forget it and continue with
+    // the outer generator.
+    context.delegate = null;
+    return ContinueSentinel;
+  }
+
+  // Define Generator.prototype.{next,throw,return} in terms of the
+  // unified ._invoke helper method.
+  defineIteratorMethods(Gp);
+
+  Gp[toStringTagSymbol] = "Generator";
+
+  // A Generator should always return itself as the iterator object when the
+  // @@iterator function is called on it. Some browsers' implementations of the
+  // iterator prototype chain incorrectly implement this, causing the Generator
+  // object to not be returned from this call. This ensures that doesn't happen.
+  // See https://github.com/facebook/regenerator/issues/274 for more details.
+  Gp[iteratorSymbol] = function() {
+    return this;
+  };
+
+  Gp.toString = function() {
+    return "[object Generator]";
+  };
+
+  function pushTryEntry(locs) {
+    var entry = { tryLoc: locs[0] };
+
+    if (1 in locs) {
+      entry.catchLoc = locs[1];
+    }
+
+    if (2 in locs) {
+      entry.finallyLoc = locs[2];
+      entry.afterLoc = locs[3];
+    }
+
+    this.tryEntries.push(entry);
+  }
+
+  function resetTryEntry(entry) {
+    var record = entry.completion || {};
+    record.type = "normal";
+    delete record.arg;
+    entry.completion = record;
+  }
+
+  function Context(tryLocsList) {
+    // The root entry object (effectively a try statement without a catch
+    // or a finally block) gives us a place to store values thrown from
+    // locations where there is no enclosing try statement.
+    this.tryEntries = [{ tryLoc: "root" }];
+    tryLocsList.forEach(pushTryEntry, this);
+    this.reset(true);
+  }
+
+  runtime.keys = function(object) {
+    var keys = [];
+    for (var key in object) {
+      keys.push(key);
+    }
+    keys.reverse();
+
+    // Rather than returning an object with a next method, we keep
+    // things simple and return the next function itself.
+    return function next() {
+      while (keys.length) {
+        var key = keys.pop();
+        if (key in object) {
+          next.value = key;
+          next.done = false;
+          return next;
+        }
+      }
+
+      // To avoid creating an additional object, we just hang the .value
+      // and .done properties off the next function object itself. This
+      // also ensures that the minifier will not anonymize the function.
+      next.done = true;
+      return next;
+    };
+  };
+
+  function values(iterable) {
+    if (iterable) {
+      var iteratorMethod = iterable[iteratorSymbol];
+      if (iteratorMethod) {
+        return iteratorMethod.call(iterable);
+      }
+
+      if (typeof iterable.next === "function") {
+        return iterable;
+      }
+
+      if (!isNaN(iterable.length)) {
+        var i = -1, next = function next() {
+          while (++i < iterable.length) {
+            if (hasOwn.call(iterable, i)) {
+              next.value = iterable[i];
+              next.done = false;
+              return next;
+            }
+          }
+
+          next.value = undefined;
+          next.done = true;
+
+          return next;
+        };
+
+        return next.next = next;
+      }
+    }
+
+    // Return an iterator with no values.
+    return { next: doneResult };
+  }
+  runtime.values = values;
+
+  function doneResult() {
+    return { value: undefined, done: true };
+  }
+
+  Context.prototype = {
+    constructor: Context,
+
+    reset: function(skipTempReset) {
+      this.prev = 0;
+      this.next = 0;
+      // Resetting context._sent for legacy support of Babel's
+      // function.sent implementation.
+      this.sent = this._sent = undefined;
+      this.done = false;
+      this.delegate = null;
+
+      this.method = "next";
+      this.arg = undefined;
+
+      this.tryEntries.forEach(resetTryEntry);
+
+      if (!skipTempReset) {
+        for (var name in this) {
+          // Not sure about the optimal order of these conditions:
+          if (name.charAt(0) === "t" &&
+              hasOwn.call(this, name) &&
+              !isNaN(+name.slice(1))) {
+            this[name] = undefined;
+          }
+        }
+      }
+    },
+
+    stop: function() {
+      this.done = true;
+
+      var rootEntry = this.tryEntries[0];
+      var rootRecord = rootEntry.completion;
+      if (rootRecord.type === "throw") {
+        throw rootRecord.arg;
+      }
+
+      return this.rval;
+    },
+
+    dispatchException: function(exception) {
+      if (this.done) {
+        throw exception;
+      }
+
+      var context = this;
+      function handle(loc, caught) {
+        record.type = "throw";
+        record.arg = exception;
+        context.next = loc;
+
+        if (caught) {
+          // If the dispatched exception was caught by a catch block,
+          // then let that catch block handle the exception normally.
+          context.method = "next";
+          context.arg = undefined;
+        }
+
+        return !! caught;
+      }
+
+      for (var i = this.tryEntries.length - 1; i >= 0; --i) {
+        var entry = this.tryEntries[i];
+        var record = entry.completion;
+
+        if (entry.tryLoc === "root") {
+          // Exception thrown outside of any try block that could handle
+          // it, so set the completion value of the entire function to
+          // throw the exception.
+          return handle("end");
+        }
+
+        if (entry.tryLoc <= this.prev) {
+          var hasCatch = hasOwn.call(entry, "catchLoc");
+          var hasFinally = hasOwn.call(entry, "finallyLoc");
+
+          if (hasCatch && hasFinally) {
+            if (this.prev < entry.catchLoc) {
+              return handle(entry.catchLoc, true);
+            } else if (this.prev < entry.finallyLoc) {
+              return handle(entry.finallyLoc);
+            }
+
+          } else if (hasCatch) {
+            if (this.prev < entry.catchLoc) {
+              return handle(entry.catchLoc, true);
+            }
+
+          } else if (hasFinally) {
+            if (this.prev < entry.finallyLoc) {
+              return handle(entry.finallyLoc);
+            }
+
+          } else {
+            throw new Error("try statement without catch or finally");
+          }
+        }
+      }
+    },
+
+    abrupt: function(type, arg) {
+      for (var i = this.tryEntries.length - 1; i >= 0; --i) {
+        var entry = this.tryEntries[i];
+        if (entry.tryLoc <= this.prev &&
+            hasOwn.call(entry, "finallyLoc") &&
+            this.prev < entry.finallyLoc) {
+          var finallyEntry = entry;
+          break;
+        }
+      }
+
+      if (finallyEntry &&
+          (type === "break" ||
+           type === "continue") &&
+          finallyEntry.tryLoc <= arg &&
+          arg <= finallyEntry.finallyLoc) {
+        // Ignore the finally entry if control is not jumping to a
+        // location outside the try/catch block.
+        finallyEntry = null;
+      }
+
+      var record = finallyEntry ? finallyEntry.completion : {};
+      record.type = type;
+      record.arg = arg;
+
+      if (finallyEntry) {
+        this.method = "next";
+        this.next = finallyEntry.finallyLoc;
+        return ContinueSentinel;
+      }
+
+      return this.complete(record);
+    },
+
+    complete: function(record, afterLoc) {
+      if (record.type === "throw") {
+        throw record.arg;
+      }
+
+      if (record.type === "break" ||
+          record.type === "continue") {
+        this.next = record.arg;
+      } else if (record.type === "return") {
+        this.rval = this.arg = record.arg;
+        this.method = "return";
+        this.next = "end";
+      } else if (record.type === "normal" && afterLoc) {
+        this.next = afterLoc;
+      }
+
+      return ContinueSentinel;
+    },
+
+    finish: function(finallyLoc) {
+      for (var i = this.tryEntries.length - 1; i >= 0; --i) {
+        var entry = this.tryEntries[i];
+        if (entry.finallyLoc === finallyLoc) {
+          this.complete(entry.completion, entry.afterLoc);
+          resetTryEntry(entry);
+          return ContinueSentinel;
+        }
+      }
+    },
+
+    "catch": function(tryLoc) {
+      for (var i = this.tryEntries.length - 1; i >= 0; --i) {
+        var entry = this.tryEntries[i];
+        if (entry.tryLoc === tryLoc) {
+          var record = entry.completion;
+          if (record.type === "throw") {
+            var thrown = record.arg;
+            resetTryEntry(entry);
+          }
+          return thrown;
+        }
+      }
+
+      // The context.catch method must only be called with a location
+      // argument that corresponds to a known catch block.
+      throw new Error("illegal catch attempt");
+    },
+
+    delegateYield: function(iterable, resultName, nextLoc) {
+      this.delegate = {
+        iterator: values(iterable),
+        resultName: resultName,
+        nextLoc: nextLoc
+      };
+
+      if (this.method === "next") {
+        // Deliberately forget the last sent value so that we don't
+        // accidentally pass it on to the delegate.
+        this.arg = undefined;
+      }
+
+      return ContinueSentinel;
+    }
+  };
+})(
+  // In sloppy mode, unbound `this` refers to the global object, fallback to
+  // Function constructor if we're in global strict mode. That is sadly a form
+  // of indirect eval which violates Content Security Policy.
+  (function() { return this })() || Function("return this")()
+);
+
+
+/***/ }),
+/* 48 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -20203,39 +22165,41 @@ Object.defineProperty(exports, "__esModule", {
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
-var _react = __webpack_require__(9);
+var _react = __webpack_require__(2);
 
 var _react2 = _interopRequireDefault(_react);
 
-var _reactSound = __webpack_require__(72);
+var _reactSound = __webpack_require__(23);
 
 var _reactSound2 = _interopRequireDefault(_reactSound);
 
-var _getMusicList = __webpack_require__(92);
+var _getMusicList = __webpack_require__(68);
 
 var _getMusicList2 = _interopRequireDefault(_getMusicList);
 
-var _details = __webpack_require__(150);
+var _details = __webpack_require__(83);
 
 var _details2 = _interopRequireDefault(_details);
 
-var _player = __webpack_require__(151);
+var _player = __webpack_require__(84);
 
 var _player2 = _interopRequireDefault(_player);
 
-var _progress = __webpack_require__(153);
+var _progress = __webpack_require__(86);
 
 var _progress2 = _interopRequireDefault(_progress);
 
-var _search = __webpack_require__(154);
+var _search = __webpack_require__(87);
 
 var _search2 = _interopRequireDefault(_search);
 
-var _footer = __webpack_require__(159);
+var _footer = __webpack_require__(92);
 
 var _footer2 = _interopRequireDefault(_footer);
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function _toConsumableArray(arr) { if (Array.isArray(arr)) { for (var i = 0, arr2 = Array(arr.length); i < arr.length; i++) { arr2[i] = arr[i]; } return arr2; } else { return Array.from(arr); } }
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
@@ -20251,8 +22215,9 @@ var AppContainer = function (_React$Component) {
 
     var _this = _possibleConstructorReturn(this, (AppContainer.__proto__ || Object.getPrototypeOf(AppContainer)).call(this, props));
 
+    _this.soundDir = './public/sounds/'; // relative to index.html. make this configurable later TODO
     _this.state = {
-      currentTrack: { title: '' },
+      currentTrack: { title: '', uri: '', album: '', artist: '' },
       playStatus: _reactSound2.default.status.STOPPED,
       elapsed: '00:00',
       total: '00:00',
@@ -20260,7 +22225,8 @@ var AppContainer = function (_React$Component) {
       volume: 50,
       playFromPosition: 0,
       autoCompleteValue: '',
-      tracks: []
+      remainingTracks: [],
+      allTracks: []
     };
     return _this;
   }
@@ -20268,21 +22234,73 @@ var AppContainer = function (_React$Component) {
   _createClass(AppContainer, [{
     key: 'componentDidMount',
     value: function componentDidMount() {
-      this.populateTracksList();
-    }
-  }, {
-    key: 'populateTracksList',
-    value: function populateTracksList() {
       var _this2 = this;
 
-      var soundDir = './public/sounds/'; // relative to index.html
-      (0, _getMusicList2.default)(soundDir).then(function (tracks) {
-        _this2.setState({ tracks: tracks });
+      this.populateAllTracksList().then(function () {
+        _this2.populateRemainingTracksList();
+        var firstTrack = _this2.getRandomTrack();
+        _this2.setState({
+          currentTrack: {
+            title: firstTrack.data.title,
+            uri: _this2.soundDir + firstTrack.data.filename,
+            album: firstTrack.data.album,
+            artist: firstTrack.data.artist
+          }
+        });
+        _this2.removeTrackFromQueue(firstTrack.index);
+      }).catch(function (err) {
+        return console.error(err);
       });
     }
   }, {
-    key: 'randomTrack',
-    value: function randomTrack() {}
+    key: 'componentDidUpdate',
+    value: function componentDidUpdate() {
+      if (!this.state.remainingTracks.length) {
+        this.populateRemainingTracksList();
+      }
+    }
+  }, {
+    key: 'populateAllTracksList',
+    value: function populateAllTracksList() {
+      var _this3 = this;
+
+      return (0, _getMusicList2.default)(this.soundDir).then(function (tracks) {
+        _this3.setState({ allTracks: tracks });
+      });
+    }
+  }, {
+    key: 'populateRemainingTracksList',
+    value: function populateRemainingTracksList() {
+      this.setState({ remainingTracks: this.state.allTracks });
+    }
+  }, {
+    key: 'getRandomTrack',
+    value: function getRandomTrack() {
+      var randomIndex = Math.floor(this.state.remainingTracks.length * Math.random());
+      var randomTrack = this.state.remainingTracks[randomIndex];
+      return { data: randomTrack, index: randomIndex };
+    }
+  }, {
+    key: 'removeTrackFromQueue',
+    value: function removeTrackFromQueue(index) {
+      var remainingTracks = [].concat(_toConsumableArray(this.state.remainingTracks));
+      remainingTracks.splice(index, 1);
+      this.setState({ remainingTracks: remainingTracks });
+    }
+  }, {
+    key: 'setCurrentTrack',
+    value: function setCurrentTrack(track) {
+      this.setState({
+        position: 0,
+        elapsed: '00:00',
+        currentTrack: {
+          title: track.title,
+          uri: this.soundDir + track.filename,
+          album: track.album,
+          artist: track.artist
+        }
+      });
+    }
   }, {
     key: 'handleSelect',
     value: function handleSelect(value, item) {
@@ -20294,8 +22312,8 @@ var AppContainer = function (_React$Component) {
       this.setState({ autoCompleteValue: event.target.value });
     }
   }, {
-    key: 'handleSongPlaying',
-    value: function handleSongPlaying(audio) {
+    key: 'handleTrackPlaying',
+    value: function handleTrackPlaying(audio) {
       this.setState({
         elapsed: this.formatMilliseconds(audio.position),
         total: this.formatMilliseconds(audio.duration),
@@ -20303,10 +22321,13 @@ var AppContainer = function (_React$Component) {
       });
     }
   }, {
-    key: 'handleSongFinished',
-    value: function handleSongFinished() {
-      // this.randomTrack();
-      console.log('finished');
+    key: 'handleTrackFinished',
+    value: function handleTrackFinished() {
+      var nextTrack = this.getRandomTrack();
+      if (nextTrack) {
+        this.setCurrentTrack(nextTrack.data);
+        this.removeTrackFromQueue(nextTrack.index);
+      }
     }
   }, {
     key: 'formatMilliseconds',
@@ -20338,11 +22359,18 @@ var AppContainer = function (_React$Component) {
         position: 0,
         elapsed: '00:00'
       });
+
+      // Reset the remaining tracks queue and set a new currentTrack
+      this.populateRemainingTracksList();
+      var randomIndex = Math.floor(this.state.allTracks.length * Math.random());
+      var randomTrack = this.state.allTracks[randomIndex];
+      this.setCurrentTrack(randomTrack);
+      this.removeTrackFromQueue(randomIndex);
     }
   }, {
     key: 'forward',
     value: function forward() {
-      this.setState({ playFromPosition: this.state.playFromPosition += 1000 * 10 });
+      this.handleTrackFinished();
     }
   }, {
     key: 'backward',
@@ -20366,14 +22394,11 @@ var AppContainer = function (_React$Component) {
       return _react2.default.createElement(
         'div',
         { className: 'scotch_music', style: scotchStyle },
-        _react2.default.createElement(_search2.default, {
-          autoCompleteValue: this.state.autoCompleteValue,
-          tracks: this.state.tracks,
-          handleSelect: this.handleSelect.bind(this),
-          handleChange: this.handleChange.bind(this)
-        }),
         _react2.default.createElement(_details2.default, {
-          title: this.state.currentTrack.title
+          title: this.state.currentTrack.title,
+          artist: this.state.currentTrack.artist,
+          album: this.state.currentTrack.album,
+          playStatus: this.state.playStatus
         }),
         _react2.default.createElement(_player2.default, {
           togglePlay: this.togglePlay.bind(this),
@@ -20381,7 +22406,6 @@ var AppContainer = function (_React$Component) {
           playStatus: this.state.playStatus,
           forward: this.forward.bind(this),
           backward: this.backward.bind(this),
-          random: this.randomTrack.bind(this),
           defaultVolume: this.state.volume,
           volumeChange: this.volumeChange.bind(this)
         }),
@@ -20391,12 +22415,12 @@ var AppContainer = function (_React$Component) {
           position: this.state.position
         }),
         _react2.default.createElement(_reactSound2.default, {
-          url: 'public/sounds/Ys_I_&_II_-_First_Step_Towards_War.ogg',
+          url: this.state.currentTrack.uri,
           playStatus: this.state.playStatus,
-          onPlaying: this.handleSongPlaying.bind(this),
+          onPlaying: this.handleTrackPlaying.bind(this),
           playFromPosition: this.state.playFromPosition,
           volume: this.state.volume,
-          onFinishedPlaying: this.handleSongFinished.bind(this)
+          onFinishedPlaying: this.handleTrackFinished.bind(this)
         }),
         _react2.default.createElement(_footer2.default, null)
       );
@@ -20409,278 +22433,17 @@ var AppContainer = function (_React$Component) {
 exports.default = AppContainer;
 
 /***/ }),
-/* 72 */
+/* 49 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
 
 
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-
-var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
-
-var _react = __webpack_require__(73);
-
-var _react2 = _interopRequireDefault(_react);
-
-var _propTypes = __webpack_require__(46);
-
-var _propTypes2 = _interopRequireDefault(_propTypes);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
-
-function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
-
-function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
-
-var pendingCalls = [];
-var initialized = false;
-
-var soundManager = void 0;
-if (typeof window !== 'undefined') {
-  soundManager = __webpack_require__(90).soundManager;
-
-  soundManager.onready(function () {
-    pendingCalls.slice().forEach(function (cb) {
-      return cb();
-    });
-  });
-}
-
-function _createSound(options, cb) {
-  if (soundManager.ok()) {
-    cb(soundManager.createSound(options));
-    return function () {};
-  } else {
-    if (!initialized) {
-      initialized = true;
-      soundManager.beginDelayedInit();
-    }
-
-    var call = function call() {
-      cb(soundManager.createSound(options));
-    };
-
-    pendingCalls.push(call);
-
-    return function () {
-      pendingCalls.splice(pendingCalls.indexOf(call), 1);
-    };
-  }
-}
-
-function noop() {}
-
-var playStatuses = {
-  PLAYING: 'PLAYING',
-  STOPPED: 'STOPPED',
-  PAUSED: 'PAUSED'
-};
-
-var Sound = function (_React$Component) {
-  _inherits(Sound, _React$Component);
-
-  function Sound() {
-    _classCallCheck(this, Sound);
-
-    return _possibleConstructorReturn(this, (Sound.__proto__ || Object.getPrototypeOf(Sound)).apply(this, arguments));
-  }
-
-  _createClass(Sound, [{
-    key: 'componentDidMount',
-    value: function componentDidMount() {
-      var _this2 = this;
-
-      this.createSound(function (sound) {
-        if (_this2.props.playStatus === playStatuses.PLAYING) {
-          sound.play();
-        }
-      });
-    }
-  }, {
-    key: 'componentWillUnmount',
-    value: function componentWillUnmount() {
-      this.removeSound();
-    }
-  }, {
-    key: 'componentDidUpdate',
-    value: function componentDidUpdate(prevProps) {
-      var _this3 = this;
-
-      var withSound = function withSound(sound) {
-        if (!sound) {
-          return;
-        }
-
-        if (_this3.props.playStatus === playStatuses.PLAYING) {
-          if (sound.playState === 0) {
-            sound.play();
-          }
-
-          if (sound.paused) {
-            sound.resume();
-          }
-        } else if (_this3.props.playStatus === playStatuses.STOPPED) {
-          if (sound.playState !== 0) {
-            sound.stop();
-          }
-        } else {
-          // this.props.playStatus === playStatuses.PAUSED
-          if (!sound.paused) {
-            sound.pause();
-          }
-        }
-
-        if (_this3.props.playFromPosition !== prevProps.playFromPosition) {
-          sound.setPosition(_this3.props.playFromPosition);
-        }
-
-        if (_this3.props.position != null) {
-          if (sound.position !== _this3.props.position && Math.round(sound.position) !== Math.round(_this3.props.position)) {
-
-            sound.setPosition(_this3.props.position);
-          }
-        }
-
-        if (_this3.props.volume !== prevProps.volume) {
-          sound.setVolume(_this3.props.volume);
-        }
-      };
-
-      if (this.props.url !== prevProps.url) {
-        this.createSound(withSound);
-      } else {
-        withSound(this.sound);
-      }
-    }
-  }, {
-    key: 'createSound',
-    value: function createSound(callback) {
-      var _this4 = this;
-
-      this.removeSound();
-
-      var props = this.props;
-      var that = this;
-
-      if (!props.url) {
-        return;
-      }
-
-      this.stopCreatingSound = _createSound({
-        url: this.props.url,
-        autoLoad: props.autoLoad,
-        volume: props.volume,
-        position: this.props.playFromPosition || this.props.position || 0,
-        whileloading: function whileloading() {
-          props.onLoading(this);
-        },
-        whileplaying: function whileplaying() {
-          props.onPlaying(this);
-        },
-        onerror: function onerror(errorCode, description) {
-          props.onError(errorCode, description, this);
-        },
-        onload: function onload() {
-          props.onLoad(this);
-        },
-        onpause: function onpause() {
-          props.onPause(this);
-        },
-        onresume: function onresume() {
-          props.onResume(this);
-        },
-        onstop: function onstop() {
-          props.onStop(this);
-        },
-        onfinish: function onfinish() {
-          if (that.props.loop && that.props.playStatus === playStatuses.PLAYING) {
-            that.sound.play();
-          } else {
-            props.onFinishedPlaying();
-          }
-        }
-      }, function (sound) {
-        _this4.sound = sound;
-        callback(sound);
-      });
-    }
-  }, {
-    key: 'removeSound',
-    value: function removeSound() {
-      if (this.stopCreatingSound) {
-        this.stopCreatingSound();
-        delete this.stopCreatingSound;
-      }
-
-      if (this.sound) {
-        try {
-          this.sound.destruct();
-        } catch (e) {} // eslint-disable-line
-
-        delete this.sound;
-      }
-    }
-  }, {
-    key: 'render',
-    value: function render() {
-      return null;
-    }
-  }]);
-
-  return Sound;
-}(_react2.default.Component);
-
-Sound.status = playStatuses;
-Sound.propTypes = {
-  url: _propTypes2.default.string.isRequired,
-  playStatus: _propTypes2.default.oneOf(Object.keys(playStatuses)).isRequired,
-  position: _propTypes2.default.number,
-  playFromPosition: _propTypes2.default.number,
-  volume: _propTypes2.default.number,
-  onError: _propTypes2.default.func,
-  onLoading: _propTypes2.default.func,
-  onLoad: _propTypes2.default.func,
-  onPlaying: _propTypes2.default.func,
-  onPause: _propTypes2.default.func,
-  onResume: _propTypes2.default.func,
-  onStop: _propTypes2.default.func,
-  onFinishedPlaying: _propTypes2.default.func,
-  autoLoad: _propTypes2.default.bool,
-  loop: _propTypes2.default.bool
-};
-Sound.defaultProps = {
-  playFromPosition: 0,
-  volume: 100,
-  onError: noop,
-  onLoading: noop,
-  onPlaying: noop,
-  onLoad: noop,
-  onPause: noop,
-  onResume: noop,
-  onStop: noop,
-  onFinishedPlaying: noop,
-  autoLoad: false,
-  loop: false
-};
-exports.default = Sound;
-
-/***/ }),
-/* 73 */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
-
-module.exports = __webpack_require__(74);
+module.exports = __webpack_require__(50);
 
 
 /***/ }),
-/* 74 */
+/* 50 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -20694,26 +22457,26 @@ module.exports = __webpack_require__(74);
 
 
 
-var _assign = __webpack_require__(11);
+var _assign = __webpack_require__(3);
 
-var ReactBaseClasses = __webpack_require__(40);
-var ReactChildren = __webpack_require__(75);
-var ReactDOMFactories = __webpack_require__(79);
-var ReactElement = __webpack_require__(15);
-var ReactPropTypes = __webpack_require__(83);
-var ReactVersion = __webpack_require__(85);
+var ReactBaseClasses = __webpack_require__(24);
+var ReactChildren = __webpack_require__(51);
+var ReactDOMFactories = __webpack_require__(55);
+var ReactElement = __webpack_require__(7);
+var ReactPropTypes = __webpack_require__(59);
+var ReactVersion = __webpack_require__(61);
 
-var createReactClass = __webpack_require__(86);
-var onlyChild = __webpack_require__(88);
+var createReactClass = __webpack_require__(62);
+var onlyChild = __webpack_require__(64);
 
 var createElement = ReactElement.createElement;
 var createFactory = ReactElement.createFactory;
 var cloneElement = ReactElement.cloneElement;
 
 if (process.env.NODE_ENV !== 'production') {
-  var lowPriorityWarning = __webpack_require__(27);
-  var canDefineProperty = __webpack_require__(21);
-  var ReactElementValidator = __webpack_require__(44);
+  var lowPriorityWarning = __webpack_require__(14);
+  var canDefineProperty = __webpack_require__(10);
+  var ReactElementValidator = __webpack_require__(28);
   var didWarnPropTypesDeprecated = false;
   createElement = ReactElementValidator.createElement;
   createFactory = ReactElementValidator.createFactory;
@@ -20815,7 +22578,7 @@ if (process.env.NODE_ENV !== 'production') {
 module.exports = React;
 
 /***/ }),
-/* 75 */
+/* 51 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -20829,11 +22592,11 @@ module.exports = React;
 
 
 
-var PooledClass = __webpack_require__(76);
-var ReactElement = __webpack_require__(15);
+var PooledClass = __webpack_require__(52);
+var ReactElement = __webpack_require__(7);
 
-var emptyFunction = __webpack_require__(12);
-var traverseAllChildren = __webpack_require__(77);
+var emptyFunction = __webpack_require__(4);
+var traverseAllChildren = __webpack_require__(53);
 
 var twoArgumentPooler = PooledClass.twoArgumentPooler;
 var fourArgumentPooler = PooledClass.fourArgumentPooler;
@@ -21009,7 +22772,7 @@ var ReactChildren = {
 module.exports = ReactChildren;
 
 /***/ }),
-/* 76 */
+/* 52 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -21024,9 +22787,9 @@ module.exports = ReactChildren;
 
 
 
-var _prodInvariant = __webpack_require__(17);
+var _prodInvariant = __webpack_require__(9);
 
-var invariant = __webpack_require__(4);
+var invariant = __webpack_require__(0);
 
 /**
  * Static poolers. Several custom versions for each potential number of
@@ -21124,7 +22887,7 @@ var PooledClass = {
 module.exports = PooledClass;
 
 /***/ }),
-/* 77 */
+/* 53 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -21138,15 +22901,15 @@ module.exports = PooledClass;
 
 
 
-var _prodInvariant = __webpack_require__(17);
+var _prodInvariant = __webpack_require__(9);
 
-var ReactCurrentOwner = __webpack_require__(22);
-var REACT_ELEMENT_TYPE = __webpack_require__(42);
+var ReactCurrentOwner = __webpack_require__(11);
+var REACT_ELEMENT_TYPE = __webpack_require__(26);
 
-var getIteratorFn = __webpack_require__(43);
-var invariant = __webpack_require__(4);
-var KeyEscapeUtils = __webpack_require__(78);
-var warning = __webpack_require__(6);
+var getIteratorFn = __webpack_require__(27);
+var invariant = __webpack_require__(0);
+var KeyEscapeUtils = __webpack_require__(54);
+var warning = __webpack_require__(1);
 
 var SEPARATOR = '.';
 var SUBSEPARATOR = ':';
@@ -21303,7 +23066,7 @@ function traverseAllChildren(children, callback, traverseContext) {
 module.exports = traverseAllChildren;
 
 /***/ }),
-/* 78 */
+/* 54 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -21365,7 +23128,7 @@ var KeyEscapeUtils = {
 module.exports = KeyEscapeUtils;
 
 /***/ }),
-/* 79 */
+/* 55 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -21379,7 +23142,7 @@ module.exports = KeyEscapeUtils;
 
 
 
-var ReactElement = __webpack_require__(15);
+var ReactElement = __webpack_require__(7);
 
 /**
  * Create a factory that creates HTML tag elements.
@@ -21388,7 +23151,7 @@ var ReactElement = __webpack_require__(15);
  */
 var createDOMFactory = ReactElement.createFactory;
 if (process.env.NODE_ENV !== 'production') {
-  var ReactElementValidator = __webpack_require__(44);
+  var ReactElementValidator = __webpack_require__(28);
   createDOMFactory = ReactElementValidator.createFactory;
 }
 
@@ -21537,7 +23300,7 @@ var ReactDOMFactories = {
 module.exports = ReactDOMFactories;
 
 /***/ }),
-/* 80 */
+/* 56 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -21551,13 +23314,13 @@ module.exports = ReactDOMFactories;
 
 
 
-var _prodInvariant = __webpack_require__(17);
+var _prodInvariant = __webpack_require__(9);
 
-var ReactPropTypeLocationNames = __webpack_require__(81);
-var ReactPropTypesSecret = __webpack_require__(82);
+var ReactPropTypeLocationNames = __webpack_require__(57);
+var ReactPropTypesSecret = __webpack_require__(58);
 
-var invariant = __webpack_require__(4);
-var warning = __webpack_require__(6);
+var invariant = __webpack_require__(0);
+var warning = __webpack_require__(1);
 
 var ReactComponentTreeHook;
 
@@ -21567,7 +23330,7 @@ if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 't
   // https://github.com/facebook/react/issues/7240
   // Remove the inline requires when we don't need them anymore:
   // https://github.com/facebook/react/pull/7178
-  ReactComponentTreeHook = __webpack_require__(28);
+  ReactComponentTreeHook = __webpack_require__(15);
 }
 
 var loggedTypeFailures = {};
@@ -21609,7 +23372,7 @@ function checkReactTypeSpec(typeSpecs, values, location, componentName, element,
 
         if (process.env.NODE_ENV !== 'production') {
           if (!ReactComponentTreeHook) {
-            ReactComponentTreeHook = __webpack_require__(28);
+            ReactComponentTreeHook = __webpack_require__(15);
           }
           if (debugID !== null) {
             componentStackInfo = ReactComponentTreeHook.getStackAddendumByID(debugID);
@@ -21627,7 +23390,7 @@ function checkReactTypeSpec(typeSpecs, values, location, componentName, element,
 module.exports = checkReactTypeSpec;
 
 /***/ }),
-/* 81 */
+/* 57 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -21655,7 +23418,7 @@ if (process.env.NODE_ENV !== 'production') {
 module.exports = ReactPropTypeLocationNames;
 
 /***/ }),
-/* 82 */
+/* 58 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -21675,7 +23438,7 @@ var ReactPropTypesSecret = 'SECRET_DO_NOT_PASS_THIS_OR_YOU_WILL_BE_FIRED';
 module.exports = ReactPropTypesSecret;
 
 /***/ }),
-/* 83 */
+/* 59 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -21689,15 +23452,15 @@ module.exports = ReactPropTypesSecret;
 
 
 
-var _require = __webpack_require__(15),
+var _require = __webpack_require__(7),
     isValidElement = _require.isValidElement;
 
-var factory = __webpack_require__(84);
+var factory = __webpack_require__(60);
 
 module.exports = factory(isValidElement);
 
 /***/ }),
-/* 84 */
+/* 60 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -21714,7 +23477,7 @@ module.exports = factory(isValidElement);
 // Therefore we re-export development-only version with all the PropTypes checks here.
 // However if one is migrating to the `prop-types` npm library, they will go through the
 // `index.js` entry point, and it will branch depending on the environment.
-var factory = __webpack_require__(45);
+var factory = __webpack_require__(29);
 module.exports = function(isValidElement) {
   // It is still allowed in 15.5.
   var throwOnDirectAccess = false;
@@ -21723,7 +23486,7 @@ module.exports = function(isValidElement) {
 
 
 /***/ }),
-/* 85 */
+/* 61 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -21740,7 +23503,7 @@ module.exports = function(isValidElement) {
 module.exports = '15.6.2';
 
 /***/ }),
-/* 86 */
+/* 62 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -21754,19 +23517,19 @@ module.exports = '15.6.2';
 
 
 
-var _require = __webpack_require__(40),
+var _require = __webpack_require__(24),
     Component = _require.Component;
 
-var _require2 = __webpack_require__(15),
+var _require2 = __webpack_require__(7),
     isValidElement = _require2.isValidElement;
 
-var ReactNoopUpdateQueue = __webpack_require__(41);
-var factory = __webpack_require__(87);
+var ReactNoopUpdateQueue = __webpack_require__(25);
+var factory = __webpack_require__(63);
 
 module.exports = factory(Component, isValidElement, ReactNoopUpdateQueue);
 
 /***/ }),
-/* 87 */
+/* 63 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -21780,13 +23543,13 @@ module.exports = factory(Component, isValidElement, ReactNoopUpdateQueue);
 
 
 
-var _assign = __webpack_require__(11);
+var _assign = __webpack_require__(3);
 
-var emptyObject = __webpack_require__(16);
-var _invariant = __webpack_require__(4);
+var emptyObject = __webpack_require__(8);
+var _invariant = __webpack_require__(0);
 
 if (process.env.NODE_ENV !== 'production') {
-  var warning = __webpack_require__(6);
+  var warning = __webpack_require__(1);
 }
 
 var MIXINS_KEY = 'mixins';
@@ -22643,7 +24406,7 @@ module.exports = factory;
 
 
 /***/ }),
-/* 88 */
+/* 64 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -22656,11 +24419,11 @@ module.exports = factory;
  */
 
 
-var _prodInvariant = __webpack_require__(17);
+var _prodInvariant = __webpack_require__(9);
 
-var ReactElement = __webpack_require__(15);
+var ReactElement = __webpack_require__(7);
 
-var invariant = __webpack_require__(4);
+var invariant = __webpack_require__(0);
 
 /**
  * Returns the first child in a collection of children and verifies that there
@@ -22684,7 +24447,7 @@ function onlyChild(children) {
 module.exports = onlyChild;
 
 /***/ }),
-/* 89 */
+/* 65 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -22697,9 +24460,9 @@ module.exports = onlyChild;
 
 
 
-var emptyFunction = __webpack_require__(12);
-var invariant = __webpack_require__(4);
-var ReactPropTypesSecret = __webpack_require__(26);
+var emptyFunction = __webpack_require__(4);
+var invariant = __webpack_require__(0);
+var ReactPropTypesSecret = __webpack_require__(13);
 
 module.exports = function() {
   function shim(props, propName, componentName, location, propFullName, secret) {
@@ -22749,7 +24512,7 @@ module.exports = function() {
 
 
 /***/ }),
-/* 90 */
+/* 66 */
 /***/ (function(module, exports, __webpack_require__) {
 
 /* WEBPACK VAR INJECTION */(function(module) {var __WEBPACK_AMD_DEFINE_RESULT__;/** @license
@@ -29048,10 +30811,10 @@ window.soundManager = soundManager;
 
 }(window));
 
-/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(91)(module)))
+/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(67)(module)))
 
 /***/ }),
-/* 91 */
+/* 67 */
 /***/ (function(module, exports) {
 
 module.exports = function(module) {
@@ -29079,7 +30842,7 @@ module.exports = function(module) {
 
 
 /***/ }),
-/* 92 */
+/* 68 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -29091,7 +30854,7 @@ Object.defineProperty(exports, "__esModule", {
 
 /**
  * Get a list of files of supported file extensions from the given directory
- * Supported extensions are: .mp3, .mp4, .wav, .ogg, .flac, and .3gp
+ * Supported extensions are: .mp3, .mp4, .wav, .ogg, .flac, and .opus
  * @param dir (string) The relative path to the directory being searched.
  *    The trailing slash must be included.
  *
@@ -29108,7 +30871,7 @@ var getMusicList = function () {
             filenames = _fs2.default.readdirSync(dir);
             // we should pass in only supported file types
 
-            supportedExtensions = /\.(mp3|mp4|wav|ogg|flac|3gp)$/;
+            supportedExtensions = /\.(mp3|mp4|wav|ogg|flac|opus)$/;
 
             filenames.filter(function (filename) {
               return filename.match(supportedExtensions);
@@ -29134,11 +30897,11 @@ var getMusicList = function () {
   };
 }();
 
-var _fs = __webpack_require__(18);
+var _fs = __webpack_require__(31);
 
 var _fs2 = _interopRequireDefault(_fs);
 
-var _musicmetadata = __webpack_require__(166);
+var _musicmetadata = __webpack_require__(69);
 
 var _musicmetadata2 = _interopRequireDefault(_musicmetadata);
 
@@ -29179,64 +30942,1756 @@ function handleFiles(files, dirName) {
 exports.default = getMusicList;
 
 /***/ }),
-/* 93 */,
-/* 94 */,
-/* 95 */,
-/* 96 */,
-/* 97 */,
-/* 98 */,
-/* 99 */,
-/* 100 */,
-/* 101 */,
-/* 102 */,
-/* 103 */,
-/* 104 */,
-/* 105 */,
-/* 106 */,
-/* 107 */,
-/* 108 */,
-/* 109 */,
-/* 110 */,
-/* 111 */,
-/* 112 */,
-/* 113 */,
-/* 114 */,
-/* 115 */,
-/* 116 */,
-/* 117 */,
-/* 118 */,
-/* 119 */,
-/* 120 */,
-/* 121 */,
-/* 122 */,
-/* 123 */,
-/* 124 */,
-/* 125 */,
-/* 126 */,
-/* 127 */,
-/* 128 */,
-/* 129 */,
-/* 130 */,
-/* 131 */,
-/* 132 */,
-/* 133 */,
-/* 134 */,
-/* 135 */,
-/* 136 */,
-/* 137 */,
-/* 138 */,
-/* 139 */,
-/* 140 */,
-/* 141 */,
-/* 142 */,
-/* 143 */,
-/* 144 */,
-/* 145 */,
-/* 146 */,
-/* 147 */,
-/* 148 */,
-/* 149 */,
-/* 150 */
+/* 69 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+var events = __webpack_require__(32)
+var common = __webpack_require__(5)
+var strtok = __webpack_require__(6)
+var through = __webpack_require__(75)
+var fs = __webpack_require__(31)
+
+module.exports = function (stream, opts, callback) {
+  if (typeof opts === 'function') {
+    callback = opts
+    opts = {}
+  }
+
+  var emitter = new events.EventEmitter()
+
+  var fsize = function (cb) {
+    if (opts.fileSize) {
+      process.nextTick(function () {
+        cb(opts.fileSize)
+      })
+    } else if (stream.hasOwnProperty('path')) {
+      fs.stat(stream.path, function (err, stats) {
+        if (err) throw err
+        cb(stats.size)
+      })
+    } else if (stream.hasOwnProperty('fileSize')) {
+      stream.fileSize(cb)
+    } else if (opts.duration) {
+      emitter.emit(
+        'done',
+        new Error('for non file streams, specify the size of the stream with a fileSize option'))
+    }
+  }
+
+  // pipe to an internal stream so we aren't messing
+  // with the stream passed to us by our users
+  var istream = stream.pipe(through(null, null, {autoDestroy: false}))
+
+  var metadata = {
+    title: '',
+    artist: [],
+    albumartist: [],
+    album: '',
+    year: '',
+    track: { no: 0, of: 0 },
+    genre: [],
+    disk: { no: 0, of: 0 },
+    picture: [],
+    duration: 0
+  }
+
+  var aliased = {}
+
+  var hasReadData = false
+  istream.once('data', function (result) {
+    hasReadData = true
+    var parser = common.getParserForMediaType(headerTypes, result)
+    parser(istream, function (event, value) {
+      if (value === null) return
+      var alias = lookupAlias(event)
+      // emit original event & value
+      if (event !== alias) {
+        emitter.emit(event, value)
+      }
+      buildAliases(alias, event, value, aliased)
+    }, done, opts.hasOwnProperty('duration'), fsize)
+    // re-emitting the first data chunk so the
+    // parser picks the stream up from the start
+    istream.emit('data', result)
+  })
+
+  istream.on('end', function () {
+    if (!hasReadData) {
+      done(new Error('Could not read any data from this stream'))
+    }
+  })
+
+  istream.on('close', onClose)
+
+  function onClose () {
+    done(new Error('Unexpected end of stream'))
+  }
+
+  function done (exception) {
+    istream.removeListener('close', onClose)
+
+    // We only emit aliased events once the 'done' event has been raised,
+    // this is because an alias like 'artist' could have values split
+    // over many data chunks.
+    for (var _alias in aliased) {
+      if (aliased.hasOwnProperty(_alias)) {
+        var val
+        if (_alias === 'title' || _alias === 'album' ||
+          _alias === 'year' || _alias === 'duration') {
+          val = aliased[_alias][0]
+        } else {
+          val = aliased[_alias]
+        }
+
+        emitter.emit(_alias, val)
+
+        if (metadata.hasOwnProperty(_alias)) {
+          metadata[_alias] = val
+        }
+      }
+    }
+
+    if (callback) {
+      callback(exception, metadata)
+    }
+    return strtok.DONE
+  }
+
+  return emitter
+}
+
+function buildAliases (alias, event, value, aliased) {
+  // we need to do something special for these events
+  var cleaned
+  if (event === 'TRACKTOTAL' || event === 'DISCTOTAL') {
+    var evt
+    if (event === 'TRACKTOTAL') evt = 'track'
+    if (event === 'DISCTOTAL') evt = 'disk'
+
+    cleaned = parseInt(value, 10)
+    if (isNaN(cleaned)) cleaned = 0
+    if (!aliased.hasOwnProperty(evt)) {
+      aliased[evt] = { no: 0, of: cleaned }
+    } else {
+      aliased[evt].of = cleaned
+    }
+  }
+
+  // if the event has been aliased then we need to clean it before
+  // it is emitted to the user. e.g. genre (20) -> Electronic
+  if (alias) {
+    cleaned = value
+    if (alias === 'genre') cleaned = common.parseGenre(value)
+    if (alias === 'picture') cleaned = cleanupPicture(value)
+
+    if (alias === 'track' || alias === 'disk') {
+      cleaned = cleanupTrack(value)
+
+      if (aliased[alias]) {
+        aliased[alias].no = cleaned.no
+        return
+      } else {
+        aliased[alias] = cleaned
+        return
+      }
+    }
+
+    // if we haven't previously seen this tag then
+    // initialize it to an array, ready for values to be entered
+    if (!aliased.hasOwnProperty(alias)) {
+      aliased[alias] = []
+    }
+
+    if (cleaned.constructor === Array) {
+      aliased[alias] = cleaned
+    } else {
+      aliased[alias].push(cleaned)
+    }
+  }
+}
+
+function lookupAlias (event) {
+  // mappings for common metadata types(id3v2.3, id3v2.2, id4, vorbis, APEv2)
+  var mappings = [
+    ['title', 'TIT2', 'TT2', '©nam', 'TITLE', 'Title'],
+    ['artist', 'TPE1', 'TP1', '©ART', 'ARTIST', 'Author'],
+    ['albumartist', 'TPE2', 'TP2', 'aART', 'ALBUMARTIST', 'ENSEMBLE', 'WM/AlbumArtist'],
+    ['album', 'TALB', 'TAL', '©alb', 'ALBUM', 'WM/AlbumTitle'],
+    ['year', 'TDRC', 'TYER', 'TYE', '©day', 'DATE', 'Year', 'WM/Year'],
+    ['comment', 'COMM', 'COM', '©cmt', 'COMMENT'],
+    ['track', 'TRCK', 'TRK', 'trkn', 'TRACKNUMBER', 'Track', 'WM/TrackNumber'],
+    ['disk', 'TPOS', 'TPA', 'disk', 'DISCNUMBER', 'Disk'],
+    ['genre', 'TCON', 'TCO', '©gen', 'gnre', 'GENRE', 'WM/Genre'],
+    ['picture', 'APIC', 'PIC', 'covr', 'METADATA_BLOCK_PICTURE', 'Cover Art (Front)',
+    'Cover Art (Back)'],
+    ['composer', 'TCOM', 'TCM', '©wrt', 'COMPOSER'],
+    ['duration'],
+    ['lyrics', 'SYLT']
+  ]
+
+  return mappings.reduce(function (a, b) {
+    if (a !== undefined) return a
+
+    var hasAlias = b.map(function (val) {
+      return val.toUpperCase()
+    }).indexOf(event.toUpperCase())
+
+    if (hasAlias > -1) {
+      return b[0]
+    }
+  }, undefined)
+}
+
+// TODO: a string of 1of1 would fail to be converted
+// converts 1/10 to no : 1, of : 10
+// or 1 to no : 1, of : 0
+function cleanupTrack (origVal) {
+  var split = origVal.toString().split('/')
+  return {
+    no: parseInt(split[0], 10) || 0,
+    of: parseInt(split[1], 10) || 0
+  }
+}
+
+function cleanupPicture (picture) {
+  var newFormat
+  if (picture.format) {
+    var split = picture.format.toLowerCase().split('/')
+    newFormat = (split.length > 1) ? split[1] : split[0]
+    if (newFormat === 'jpeg') newFormat = 'jpg'
+  } else {
+    newFormat = 'jpg'
+  }
+  return { format: newFormat, data: picture.data }
+}
+
+var headerTypes = [
+  {
+    buf: common.asfGuidBuf,
+    tag: __webpack_require__(77)
+  },
+  {
+    buf: new Buffer('ID3'),
+    tag: __webpack_require__(78)
+  },
+  {
+    buf: new Buffer('ftypM4A'),
+    tag: __webpack_require__(35),
+    offset: 4
+  },
+  {
+    buf: new Buffer('ftypmp42'),
+    tag: __webpack_require__(35),
+    offset: 4
+  },
+  {
+    buf: new Buffer('OggS'),
+    tag: __webpack_require__(80)
+  },
+  {
+    buf: new Buffer('fLaC'),
+    tag: __webpack_require__(81)
+  },
+  {
+    buf: new Buffer('MAC'),
+    tag: __webpack_require__(82)
+  }
+]
+
+
+/***/ }),
+/* 70 */
+/***/ (function(module, exports) {
+
+module.exports = require("assert");
+
+/***/ }),
+/* 71 */
+/***/ (function(module, exports) {
+
+exports = module.exports = typeof Object.keys === 'function'
+  ? Object.keys : shim;
+
+exports.shim = shim;
+function shim (obj) {
+  var keys = [];
+  for (var key in obj) keys.push(key);
+  return keys;
+}
+
+
+/***/ }),
+/* 72 */
+/***/ (function(module, exports) {
+
+var supportsArgumentsClass = (function(){
+  return Object.prototype.toString.call(arguments)
+})() == '[object Arguments]';
+
+exports = module.exports = supportsArgumentsClass ? supported : unsupported;
+
+exports.supported = supported;
+function supported(object) {
+  return Object.prototype.toString.call(object) == '[object Arguments]';
+};
+
+exports.unsupported = unsupported;
+function unsupported(object){
+  return object &&
+    typeof object == 'object' &&
+    typeof object.length == 'number' &&
+    Object.prototype.hasOwnProperty.call(object, 'callee') &&
+    !Object.prototype.propertyIsEnumerable.call(object, 'callee') ||
+    false;
+};
+
+
+/***/ }),
+/* 73 */
+/***/ (function(module, exports) {
+
+var windows1252 = [8364, 129, 8218, 402, 8222, 8230, 8224, 8225, 710, 8240, 352,
+8249, 338, 141, 381, 143, 144, 8216, 8217, 8220, 8221, 8226, 8211, 8212, 732,
+8482, 353, 8250, 339, 157, 382, 376, 160, 161, 162, 163, 164, 165, 166, 167, 168,
+169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184,
+185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200,
+201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216,
+217, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232,
+233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243, 244, 245, 246, 247,
+248, 249, 250, 251, 252, 253, 254, 255]
+
+function inRange (a, min, max) {
+  return min <= a && a <= max
+}
+
+function codePointToString (cp) {
+  if (cp <= 0xFFFF) {
+    return String.fromCharCode(cp)
+  } else {
+    cp -= 0x10000
+    return String.fromCharCode((cp >> 10) + 0xD800, (cp & 0x3FF) + 0xDC00)
+  }
+}
+
+function singleByteDecoder (bite, index) {
+  if (inRange(bite, 0x00, 0x7F)) {
+    return bite
+  }
+
+  var code_point = index[bite - 0x80]
+  if (code_point === null) {
+    throw Error('invaliding encoding')
+  }
+
+  return code_point
+}
+
+module.exports = function (buffer) {
+  var str = ''
+  for (var i = 0; i < buffer.length; i++) {
+    str += codePointToString(singleByteDecoder(buffer[i], windows1252))
+  }
+  return str
+}
+
+
+/***/ }),
+/* 74 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+var common = __webpack_require__(5)
+
+module.exports = function (stream, callback, done) {
+  var endData = null
+  stream.on('data', function (data) {
+    endData = data
+  })
+  common.streamOnRealEnd(stream, function () {
+    var offset = endData.length - 128
+    var header = endData.toString('ascii', offset, offset += 3)
+    if (header !== 'TAG') {
+      return done(new Error('Could not find metadata header'))
+    }
+
+    var title = endData.toString('ascii', offset, offset += 30)
+    callback('title', title.trim().replace(/\x00/g, ''))
+
+    var artist = endData.toString('ascii', offset, offset += 30)
+    callback('artist', artist.trim().replace(/\x00/g, ''))
+
+    var album = endData.toString('ascii', offset, offset += 30)
+    callback('album', album.trim().replace(/\x00/g, ''))
+
+    var year = endData.toString('ascii', offset, offset += 4)
+    callback('year', year.trim().replace(/\x00/g, ''))
+
+    var comment = endData.toString('ascii', offset, offset += 28)
+    callback('comment', comment.trim().replace(/\x00/g, ''))
+
+    var track = endData[endData.length - 2]
+    callback('track', track)
+
+    if (endData[endData.length - 1] in common.GENRES) {
+      var genre = common.GENRES[endData[endData.length - 1]]
+      callback('genre', genre)
+    }
+    return done()
+  })
+}
+
+
+/***/ }),
+/* 75 */
+/***/ (function(module, exports, __webpack_require__) {
+
+var Stream = __webpack_require__(76)
+
+// through
+//
+// a stream that does nothing but re-emit the input.
+// useful for aggregating a series of changing but not ending streams into one stream)
+
+exports = module.exports = through
+through.through = through
+
+//create a readable writable stream.
+
+function through (write, end, opts) {
+  write = write || function (data) { this.queue(data) }
+  end = end || function () { this.queue(null) }
+
+  var ended = false, destroyed = false, buffer = [], _ended = false
+  var stream = new Stream()
+  stream.readable = stream.writable = true
+  stream.paused = false
+
+//  stream.autoPause   = !(opts && opts.autoPause   === false)
+  stream.autoDestroy = !(opts && opts.autoDestroy === false)
+
+  stream.write = function (data) {
+    write.call(this, data)
+    return !stream.paused
+  }
+
+  function drain() {
+    while(buffer.length && !stream.paused) {
+      var data = buffer.shift()
+      if(null === data)
+        return stream.emit('end')
+      else
+        stream.emit('data', data)
+    }
+  }
+
+  stream.queue = stream.push = function (data) {
+//    console.error(ended)
+    if(_ended) return stream
+    if(data === null) _ended = true
+    buffer.push(data)
+    drain()
+    return stream
+  }
+
+  //this will be registered as the first 'end' listener
+  //must call destroy next tick, to make sure we're after any
+  //stream piped from here.
+  //this is only a problem if end is not emitted synchronously.
+  //a nicer way to do this is to make sure this is the last listener for 'end'
+
+  stream.on('end', function () {
+    stream.readable = false
+    if(!stream.writable && stream.autoDestroy)
+      process.nextTick(function () {
+        stream.destroy()
+      })
+  })
+
+  function _end () {
+    stream.writable = false
+    end.call(stream)
+    if(!stream.readable && stream.autoDestroy)
+      stream.destroy()
+  }
+
+  stream.end = function (data) {
+    if(ended) return
+    ended = true
+    if(arguments.length) stream.write(data)
+    _end() // will emit or queue
+    return stream
+  }
+
+  stream.destroy = function () {
+    if(destroyed) return
+    destroyed = true
+    ended = true
+    buffer.length = 0
+    stream.writable = stream.readable = false
+    stream.emit('close')
+    return stream
+  }
+
+  stream.pause = function () {
+    if(stream.paused) return
+    stream.paused = true
+    return stream
+  }
+
+  stream.resume = function () {
+    if(stream.paused) {
+      stream.paused = false
+      stream.emit('resume')
+    }
+    drain()
+    //may have become paused again,
+    //as drain emits 'data'.
+    if(!stream.paused)
+      stream.emit('drain')
+    return stream
+  }
+  return stream
+}
+
+
+
+/***/ }),
+/* 76 */
+/***/ (function(module, exports) {
+
+module.exports = require("stream");
+
+/***/ }),
+/* 77 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+var strtok = __webpack_require__(6)
+var common = __webpack_require__(5)
+var equal = __webpack_require__(34)
+
+var decodeString = common.decodeString
+
+module.exports = function (stream, callback, done) {
+  var currentState = startState
+
+  strtok.parse(stream, function (v, cb) {
+    currentState = currentState.parse(callback, v, done)
+    return currentState.getExpectedType()
+  })
+}
+
+var startState = {
+  parse: function (callback) {
+    return idState
+  }
+}
+
+var finishedState = {
+  parse: function (callback) {
+    return this
+  },
+  getExpectedType: function () {
+    return strtok.DONE
+  }
+}
+
+var idState = {
+  parse: function (callback, data, done) {
+    if (!equal(common.asfGuidBuf, data)) {
+      done(new Error('expected asf header but was not found'))
+      return finishedState
+    }
+    return headerDataState
+  },
+  getExpectedType: function () {
+    return new strtok.BufferType(common.asfGuidBuf.length)
+  }
+}
+
+function ReadObjectState (size, objectCount) {
+  this.size = size
+  this.objectCount = objectCount
+}
+
+ReadObjectState.prototype.parse = function (callback, data, done) {
+  var guid = data.slice(0, 16)
+  var size = readUInt64LE(data, 16)
+  var State = stateByGuid(guid) || IgnoreObjectState
+  this.objectCount -= 1
+  this.size -= size
+  var nextState = (this.objectCount <= 0) ? finishedState : this
+  return new State(nextState, size - 24)
+}
+
+ReadObjectState.prototype.getExpectedType = function () {
+  return new strtok.BufferType(24)
+}
+
+var headerDataState = {
+  parse: function (callback, data, done) {
+    var size = readUInt64LE(data, 0)
+    var objectCount = data.readUInt32LE(8)
+    return new ReadObjectState(size, objectCount)
+  },
+  getExpectedType: function () {
+    // 8 bytes size
+    // 4 bytes object count
+    // 2 bytes ignore
+    return new strtok.BufferType(14)
+  }
+}
+
+function IgnoreObjectState (nextState, size) {
+  this.nextState = nextState
+  this.size = size
+}
+
+IgnoreObjectState.prototype.parse = function (callback, data, done) {
+  if (this.nextState === finishedState) done()
+  return this.nextState
+}
+
+IgnoreObjectState.prototype.getExpectedType = function () {
+  return new strtok.IgnoreType(this.size)
+}
+
+function ContentDescriptionObjectState (nextState, size) {
+  this.nextState = nextState
+  this.size = size
+}
+
+var contentDescTags = ['Title', 'Author', 'Copyright', 'Description', 'Rating']
+ContentDescriptionObjectState.prototype.parse = function (callback, data, done) {
+  var lengths = [
+    data.readUInt16LE(0),
+    data.readUInt16LE(2),
+    data.readUInt16LE(4),
+    data.readUInt16LE(6),
+    data.readUInt16LE(8)
+  ]
+  var pos = 10
+  for (var i = 0; i < contentDescTags.length; i += 1) {
+    var tagName = contentDescTags[i]
+    var length = lengths[i]
+    var end = pos + length
+    if (length > 0) {
+      var value = parseUnicodeAttr(data.slice(pos, end))
+      callback(tagName, value)
+    }
+    pos = end
+  }
+  if (this.nextState === finishedState) done()
+  return this.nextState
+}
+
+ContentDescriptionObjectState.prototype.getExpectedType = function () {
+  return new strtok.BufferType(this.size)
+}
+
+ContentDescriptionObjectState.guid = new Buffer([
+  0x33, 0x26, 0xB2, 0x75, 0x8E, 0x66, 0xCF, 0x11,
+  0xA6, 0xD9, 0x00, 0xAA, 0x00, 0x62, 0xCE, 0x6C
+])
+
+function ExtendedContentDescriptionObjectState (nextState, size) {
+  this.nextState = nextState
+  this.size = size
+}
+
+var attributeParsers = [
+  parseUnicodeAttr,
+  parseByteArrayAttr,
+  parseBoolAttr,
+  parseDWordAttr,
+  parseQWordAttr,
+  parseWordAttr,
+  parseByteArrayAttr
+]
+
+ExtendedContentDescriptionObjectState.prototype.parse = function (callback, data, done) {
+  var attrCount = data.readUInt16LE(0)
+  var pos = 2
+  for (var i = 0; i < attrCount; i += 1) {
+    var nameLen = data.readUInt16LE(pos)
+    pos += 2
+    var name = parseUnicodeAttr(data.slice(pos, pos + nameLen))
+    pos += nameLen
+    var valueType = data.readUInt16LE(pos)
+    pos += 2
+    var valueLen = data.readUInt16LE(pos)
+    pos += 2
+    var value = data.slice(pos, pos + valueLen)
+    pos += valueLen
+    var parseAttr = attributeParsers[valueType]
+    if (!parseAttr) {
+      done(new Error('unexpected value type: ' + valueType))
+      return finishedState
+    }
+    var attr = parseAttr(value)
+    callback(name, attr)
+  }
+  if (this.nextState === finishedState) done()
+  return this.nextState
+}
+
+ExtendedContentDescriptionObjectState.prototype.getExpectedType = function () {
+  return new strtok.BufferType(this.size)
+}
+
+ExtendedContentDescriptionObjectState.guid = new Buffer([
+  0x40, 0xA4, 0xD0, 0xD2, 0x07, 0xE3, 0xD2, 0x11,
+  0x97, 0xF0, 0x00, 0xA0, 0xC9, 0x5E, 0xA8, 0x50
+])
+
+function FilePropertiesObject (nextState, size) {
+  this.nextState = nextState
+  this.size = size
+}
+
+FilePropertiesObject.prototype.parse = function (callback, data, done) {
+  // in miliseconds
+  var playDuration = parseQWordAttr(data.slice(40, 48)) / 10000
+  callback('duration', playDuration / 1000)
+
+  if (this.nextState === finishedState) done()
+  return this.nextState
+}
+
+FilePropertiesObject.prototype.getExpectedType = function () {
+  return new strtok.BufferType(this.size)
+}
+
+FilePropertiesObject.guid = new Buffer([
+  0xA1, 0xDC, 0xAB, 0x8C, 0x47, 0xA9, 0xCF, 0x11,
+  0x8E, 0xE4, 0x00, 0xC0, 0x0C, 0x20, 0x53, 0x65
+])
+
+var guidStates = [
+  FilePropertiesObject,
+  ContentDescriptionObjectState,
+  ExtendedContentDescriptionObjectState
+]
+function stateByGuid (guidBuf) {
+  for (var i = 0; i < guidStates.length; i += 1) {
+    var GuidState = guidStates[i]
+    if (equal(GuidState.guid, guidBuf)) return GuidState
+  }
+  return null
+}
+
+function parseUnicodeAttr (buf) {
+  return common.stripNulls(decodeString(buf, 'utf16le'))
+}
+
+function parseByteArrayAttr (buf) {
+  var newBuf = new Buffer(buf.length)
+  buf.copy(newBuf)
+  return newBuf
+}
+
+function parseBoolAttr (buf) {
+  return parseDWordAttr(buf) === 1
+}
+
+function parseDWordAttr (buf) {
+  return buf.readUInt32LE(0)
+}
+
+function parseQWordAttr (buf) {
+  return readUInt64LE(buf, 0)
+}
+
+function parseWordAttr (buf) {
+  return buf.readUInt16LE(0)
+}
+
+function readUInt64LE (buffer, offset) {
+  var high = buffer.slice(offset, offset + 4).readUInt32LE(0)
+  var low = buffer.slice(offset + 4, offset + 8).readUInt32LE(0)
+  var maxuint32 = Math.pow(2, 32)
+  return ((low * maxuint32) + (high >>> 0))
+}
+
+
+/***/ }),
+/* 78 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+var strtok = __webpack_require__(6)
+var parser = __webpack_require__(79)
+var common = __webpack_require__(5)
+
+module.exports = function (stream, callback, done, readDuration, fileSize) {
+  var frameCount = 0
+  var audioFrameHeader
+  var bitrates = []
+
+  strtok.parse(stream, function (v, cb) {
+    if (v === undefined) {
+      cb.state = 0
+      return new strtok.BufferType(10)
+    }
+
+    switch (cb.state) {
+      case 0: // header
+        if (v.toString('ascii', 0, 3) !== 'ID3') {
+          return done(new Error('expected id3 header but was not found'))
+        }
+        cb.id3Header = {
+          version: '2.' + v[3] + '.' + v[4],
+          major: v[3],
+          unsync: common.strtokBITSET.get(v, 5, 7),
+          xheader: common.strtokBITSET.get(v, 5, 6),
+          xindicator: common.strtokBITSET.get(v, 5, 5),
+          footer: common.strtokBITSET.get(v, 5, 4),
+          size: common.strtokINT32SYNCSAFE.get(v, 6)
+        }
+        cb.state = 1
+        return new strtok.BufferType(cb.id3Header.size)
+
+      case 1: // id3 data
+        parseMetadata(v, cb.id3Header, done).map(function (obj) {
+          callback.apply(this, obj)
+        })
+        if (readDuration) {
+          cb.state = 2
+          return new strtok.BufferType(4)
+        }
+        return done()
+
+      case 1.5:
+        var shiftedBuffer = new Buffer(4)
+        cb.frameFragment.copy(shiftedBuffer, 0, 1)
+        v.copy(shiftedBuffer, 3)
+        v = shiftedBuffer
+        cb.state = 2
+
+      /* falls through */
+      case 2: // audio frame header
+
+        // we have found the id3 tag at the end of the file, ignore
+        if (v.slice(0, 3).toString() === 'TAG') {
+          return done()
+        }
+
+        // first 11 bits should all be set (frame sync)
+        if ((v[0] === 0xFF && (v[1] & 0xE0) === 0xE0) !== true) {
+          // keep scanning for frame header, id3 tag may
+          // have some padding (0x00) at the end
+          return seekFirstAudioFrame(done)
+        }
+
+        var header = {
+          'version': readMpegVersion(v[1]),
+          'layer': readLayer(v[1]),
+          'protection': !(v[1] & 0x1),
+          'padding': !!((v[2] & 0x02) >> 1),
+          'mode': readMode(v[3])
+        }
+
+        if (isNaN(header.version) || isNaN(header.layer)) {
+          return seekFirstAudioFrame(done)
+        }
+
+        // mp3 files are only found in MPEG1/2 Layer 3
+        if ((header.version !== 1 && header.version !== 2) || header.layer !== 3) {
+          return seekFirstAudioFrame(done)
+        }
+
+        header.samples_per_frame = calcSamplesPerFrame(
+          header.version, header.layer)
+
+        header.bitrate = id3BitrateCalculator(v[2], header.version, header.layer)
+        if (isNaN(header.bitrate)) {
+          return seekFirstAudioFrame(done)
+        }
+
+        header.sample_rate = samplingRateCalculator(v[2], header.version)
+        if (isNaN(header.sample_rate)) {
+          return seekFirstAudioFrame(done)
+        }
+
+        header.slot_size = calcSlotSize(header.layer)
+
+        header.sideinfo_length = calculateSideInfoLength(
+          header.layer, header.mode, header.version)
+
+        var bps = header.samples_per_frame / 8.0
+        var fsize = (bps * (header.bitrate * 1000) / header.sample_rate) +
+          ((header.padding) ? header.slot_size : 0)
+        header.frame_size = Math.floor(fsize)
+
+        audioFrameHeader = header
+        frameCount++
+        bitrates.push(header.bitrate)
+
+        // xtra header only exists in first frame
+        if (frameCount === 1) {
+          cb.offset = header.sideinfo_length
+          cb.state = 3
+          return new strtok.BufferType(header.sideinfo_length)
+        }
+
+        // the stream is CBR if the first 3 frame bitrates are the same
+        if (readDuration && fileSize && frameCount === 3 && areAllSame(bitrates)) {
+          fileSize(function (size) {
+            // subtract non audio stream data from duration calculation
+            size = size - cb.id3Header.size
+            var kbps = (header.bitrate * 1000) / 8
+            callback('duration', size / kbps)
+            cb(done())
+          })
+          return strtok.DEFER
+        }
+
+        // once we know the file is VBR attach listener to end of
+        // stream so we can do the duration calculation when we
+        // have counted all the frames
+        if (readDuration && frameCount === 4) {
+          stream.once('end', function () {
+            callback('duration', calcDuration(frameCount,
+              header.samples_per_frame, header.sample_rate))
+            done()
+          })
+        }
+
+        cb.state = 5
+        return new strtok.IgnoreType(header.frame_size - 4)
+
+      case 3: // side information
+        cb.offset += 12
+        cb.state = 4
+        return new strtok.BufferType(12)
+
+      case 4: // xtra / info header
+        cb.state = 5
+        var frameDataLeft = audioFrameHeader.frame_size - 4 - cb.offset
+
+        var id = v.toString('ascii', 0, 4)
+        if (id !== 'Xtra' && id !== 'Info' && id !== 'Xing') {
+          return new strtok.IgnoreType(frameDataLeft)
+        }
+
+        // frames field is not present
+        if ((v[7] & 0x01) !== 1) {
+          return new strtok.IgnoreType(frameDataLeft)
+        }
+
+        var numFrames = v.readUInt32BE(8)
+        var ah = audioFrameHeader
+        callback('duration', calcDuration(numFrames, ah.samples_per_frame, ah.sample_rate))
+        return done()
+
+      case 5: // skip frame data
+        cb.state = 2
+        return new strtok.BufferType(4)
+    }
+
+    function seekFirstAudioFrame (done) {
+      if (frameCount) {
+        return done(new Error('expected frame header but was not found'))
+      }
+
+      cb.frameFragment = v
+      cb.state = 1.5
+      return new strtok.BufferType(1)
+    }
+  })
+}
+
+function areAllSame (array) {
+  var first = array[0]
+  return array.every(function (element) {
+    return element === first
+  })
+}
+
+function calcDuration (numFrames, samplesPerFrame, sampleRate) {
+  return Math.round(numFrames * (samplesPerFrame / sampleRate))
+}
+
+function parseMetadata (data, header, done) {
+  var offset = 0
+  var frames = []
+
+  if (header.xheader) {
+    offset += data.readUInt32BE(0)
+  }
+
+  while (true) {
+    if (offset === data.length) break
+    var frameHeaderBytes = data.slice(offset, offset += getFrameHeaderLength(header.major, done))
+    var frameHeader = readFrameHeader(frameHeaderBytes, header.major)
+
+    // Last frame. Check first char is a letter, bit of defensive programming
+    if (frameHeader.id === '' || frameHeader.id === '\u0000\u0000\u0000\u0000' ||
+      'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.indexOf(frameHeader.id[0]) === -1) {
+      break
+    }
+
+    var frameDataBytes = data.slice(offset, offset += frameHeader.length)
+    var frameData = readFrameData(frameDataBytes, frameHeader, header.major)
+    for (var pos in frameData) {
+      if (frameData.hasOwnProperty(pos)) {
+        frames.push([frameHeader.id, frameData[pos]])
+      }
+    }
+  }
+  return frames
+}
+
+function readFrameData (v, frameHeader, majorVer) {
+  switch (majorVer) {
+    case 2:
+      return parser.readData(v, frameHeader.id, null, majorVer)
+    case 3:
+    case 4:
+      if (frameHeader.flags.format.unsync) {
+        v = common.removeUnsyncBytes(v)
+      }
+      if (frameHeader.flags.format.data_length_indicator) {
+        v = v.slice(4, v.length)
+      }
+      return parser.readData(v, frameHeader.id, frameHeader.flags, majorVer)
+  }
+}
+
+function readFrameHeader (v, majorVer) {
+  var header = {}
+  switch (majorVer) {
+    case 2:
+      header.id = v.toString('ascii', 0, 3)
+      header.length = common.strtokUINT24_BE.get(v, 3, 6)
+    break
+    case 3:
+      header.id = v.toString('ascii', 0, 4)
+      header.length = strtok.UINT32_BE.get(v, 4, 8)
+      header.flags = readFrameFlags(v.slice(8, 10))
+    break
+    case 4:
+      header.id = v.toString('ascii', 0, 4)
+      header.length = common.strtokINT32SYNCSAFE.get(v, 4, 8)
+      header.flags = readFrameFlags(v.slice(8, 10))
+    break
+  }
+  return header
+}
+
+function getFrameHeaderLength (majorVer, done) {
+  switch (majorVer) {
+    case 2:
+      return 6
+    case 3:
+    case 4:
+      return 10
+    default:
+      return done(new Error('header version is incorrect'))
+  }
+}
+
+function readFrameFlags (b) {
+  return {
+    status: {
+      tag_alter_preservation: common.strtokBITSET.get(b, 0, 6),
+      file_alter_preservation: common.strtokBITSET.get(b, 0, 5),
+      read_only: common.strtokBITSET.get(b, 0, 4)
+    },
+    format: {
+      grouping_identity: common.strtokBITSET.get(b, 1, 7),
+      compression: common.strtokBITSET.get(b, 1, 3),
+      encryption: common.strtokBITSET.get(b, 1, 2),
+      unsync: common.strtokBITSET.get(b, 1, 1),
+      data_length_indicator: common.strtokBITSET.get(b, 1, 0)
+    }
+  }
+}
+
+function readMpegVersion (byte) {
+  var bits = (byte & 0x18) >> 3
+
+  if (bits === 0x00) {
+    return 2.5
+  } else if (bits === 0x01) {
+    return 'reserved'
+  } else if (bits === 0x02) {
+    return 2
+  } else if (bits === 0x03) {
+    return 1
+  }
+}
+
+function readLayer (byte) {
+  var bits = (byte & 0x6) >> 1
+
+  if (bits === 0x00) {
+    return 'reserved'
+  } else if (bits === 0x01) {
+    return 3
+  } else if (bits === 0x02) {
+    return 2
+  } else if (bits === 0x03) {
+    return 1
+  }
+}
+
+function readMode (byte) {
+  var bits = (byte & 0xC0) >> 6
+  if (bits === 0x00) {
+    return 'stereo'
+  } else if (bits === 0x01) {
+    return 'joint_stereo'
+  } else if (bits === 0x02) {
+    return 'dual_channel'
+  } else if (bits === 0x03) {
+    return 'mono'
+  }
+}
+
+function calcSamplesPerFrame (version, layer) {
+  if (layer === 1) return 384
+  if (layer === 2) return 1152
+  if (layer === 3 && version === 1) return 1152
+  if (layer === 3 && (version === 2 || version === 2.5)) return 576
+}
+
+function calculateSideInfoLength (layer, mode, version) {
+  if (layer !== 3) return 2
+  if (['stereo', 'joint_stereo', 'dual_channel'].indexOf(mode) >= 0) {
+    if (version === 1) {
+      return 32
+    } else if (version === 2 || version === 2.5) {
+      return 17
+    }
+  } else if (mode === 'mono') {
+    if (version === 1) {
+      return 17
+    } else if (version === 2 || version === 2.5) {
+      return 9
+    }
+  }
+}
+
+function calcSlotSize (layer) {
+  if (layer === 0) return 'reserved'
+  if (layer === 1) return 4
+  if (layer === 2) return 1
+  if (layer === 3) return 1
+}
+
+// [bits][mpegversion + layer] = bitrate
+var bitrate_index = {
+    0x01: {'11': 32, '12': 32, '13': 32, '21': 32, '22': 8, '23': 8},
+    0x02: {'11': 64, '12': 48, '13': 40, '21': 48, '22': 16, '23': 16},
+    0x03: {'11': 96, '12': 56, '13': 48, '21': 56, '22': 24, '23': 24},
+    0x04: {'11': 128, '12': 64, '13': 56, '21': 64, '22': 32, '23': 32},
+    0x05: {'11': 160, '12': 80, '13': 64, '21': 80, '22': 40, '23': 40},
+    0x06: {'11': 192, '12': 96, '13': 80, '21': 96, '22': 48, '23': 48},
+    0x07: {'11': 224, '12': 112, '13': 96, '21': 112, '22': 56, '23': 56},
+    0x08: {'11': 256, '12': 128, '13': 112, '21': 128, '22': 64, '23': 64},
+    0x09: {'11': 288, '12': 160, '13': 128, '21': 144, '22': 80, '23': 80},
+    0x0A: {'11': 320, '12': 192, '13': 160, '21': 160, '22': 96, '23': 96},
+    0x0B: {'11': 352, '12': 224, '13': 192, '21': 176, '22': 112, '23': 112},
+    0x0C: {'11': 384, '12': 256, '13': 224, '21': 192, '22': 128, '23': 128},
+    0x0D: {'11': 416, '12': 320, '13': 256, '21': 224, '22': 144, '23': 144},
+    0x0E: {'11': 448, '12': 384, '13': 320, '21': 256, '22': 160, '23': 160}
+  }
+
+function id3BitrateCalculator (byte, mpegVersion, layer) {
+  var bits = (byte & 0xF0) >> 4
+  if (bits === 0x00) return 'free'
+  if (bits === 0x0F) return 'reserved'
+  return bitrate_index[bits][mpegVersion.toString() + layer]
+}
+
+// [version][bits] == sampling rate
+var sampling_rate_freq_index = {
+    1: {0x00: 44100, 0x01: 48000, 0x02: 32000},
+    2: {0x00: 22050, 0x01: 24000, 0x02: 16000},
+    2.5: {0x00: 11025, 0x01: 12000, 0x02: 8000}
+}
+
+function samplingRateCalculator (byte, version) {
+  var bits = (byte & 0xC) >> 2
+  if (bits === 0x03) return 'reserved'
+  return sampling_rate_freq_index[version][bits]
+}
+
+
+/***/ }),
+/* 79 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+var Buffer = __webpack_require__(33).Buffer
+var strtok = __webpack_require__(6)
+var common = __webpack_require__(5)
+var findZero = common.findZero
+var decodeString = common.decodeString
+
+exports.readData = function readData (b, type, flags, major) {
+  var encoding = getTextEncoding(b[0])
+  var length = b.length
+  var offset = 0
+  var output = []
+  var nullTerminatorLength = getNullTerminatorLength(encoding)
+  var fzero
+
+  if (type[0] === 'T') {
+    type = 'T*'
+  }
+
+  switch (type) {
+    case 'T*':
+      var text = decodeString(b.slice(1), encoding).replace(/\x00+$/, '')
+      // id3v2.4 defines that multiple T* values are separated by 0x00
+      output = text.split(/\x00/g)
+      break
+
+    case 'PIC':
+    case 'APIC':
+      var pic = {}
+
+      offset += 1
+
+      switch (major) {
+        case 2:
+          pic.format = decodeString(b.slice(offset, offset + 3), encoding)
+          offset += 3
+          break
+        case 3:
+        case 4:
+          var enc = 'iso-8859-1'
+          fzero = findZero(b, offset, length, enc)
+          pic.format = decodeString(b.slice(offset, fzero), enc)
+          offset = fzero + 1
+          break
+      }
+
+      pic.type = common.PICTURE_TYPE[b[offset]]
+      offset += 1
+
+      fzero = findZero(b, offset, length, encoding)
+      pic.description = decodeString(b.slice(offset, fzero), encoding)
+      offset = fzero + nullTerminatorLength
+
+      pic.data = new Buffer(b.slice(offset, length))
+      output = [pic]
+      break
+
+    case 'CNT':
+    case 'PCNT':
+      output = [strtok.UINT32_BE.get(b, 0)]
+      break
+
+    case 'SYLT':
+      // skip text encoding (1 byte),
+      //      language (3 bytes),
+      //      time stamp format (1 byte),
+      //      content type (1 byte),
+      //      content descriptor (1 byte)
+      offset += 7
+
+      output = []
+      while (offset < length) {
+        var txt = b.slice(offset, offset = findZero(b, offset, length, encoding))
+        offset += 5 // push offset forward one +  4 byte timestamp
+        output.push(decodeString(txt, encoding))
+      }
+      break
+
+    case 'ULT':
+    case 'USLT':
+    case 'COM':
+    case 'COMM':
+      var out = {}
+
+      offset += 1
+
+      out.language = decodeString(b.slice(offset, offset + 3), 'iso-8859-1')
+      offset += 3
+
+      fzero = findZero(b, offset, length, encoding)
+      out.description = decodeString(b.slice(offset, fzero), encoding)
+      offset = fzero + nullTerminatorLength
+
+      out.text = decodeString(b.slice(offset, length), encoding).replace(/\x00+$/, '')
+
+      output = [out]
+      break
+
+    case 'UFID':
+      var ufid = {}
+
+      fzero = findZero(b, offset, length, encoding)
+      ufid.owner_identifier = decodeString(b.slice(offset, fzero), encoding)
+      offset = fzero + nullTerminatorLength
+
+      ufid.identifier = b.slice(offset, length)
+      output = [ufid]
+      break
+  }
+
+  return output
+}
+
+function getTextEncoding (byte) {
+  switch (byte) {
+    case 0x00:
+      return 'iso-8859-1' // binary
+    case 0x01:
+    case 0x02:
+      return 'utf16' // 01 = with bom, 02 = without bom
+    case 0x03:
+      return 'utf8'
+    default:
+      return 'utf8'
+  }
+}
+
+function getNullTerminatorLength (enc) {
+  switch (enc) {
+    case 'utf16':
+      return 2
+    default:
+      return 1
+  }
+}
+
+
+/***/ }),
+/* 80 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+var events = __webpack_require__(32)
+var strtok = __webpack_require__(6)
+var common = __webpack_require__(5)
+var sum = common.sum
+
+module.exports = function (stream, callback, done, readDuration) {
+  var innerStream = new events.EventEmitter()
+
+  var pageLength = 0
+  var sampleRate = 0
+  var header
+  var stop = false
+
+  stream.on('end', function () {
+    if (readDuration) {
+      callback('duration', header.pcm_sample_pos / sampleRate)
+      done()
+    }
+  })
+
+  // top level parser that handles the parsing of pages
+  strtok.parse(stream, function (v, cb) {
+    if (!v) {
+      cb.state = 0
+      return new strtok.BufferType(27)
+    }
+
+    if (stop) {
+      return done()
+    }
+
+    switch (cb.state) {
+      case 0: // header
+        header = {
+          type: v.toString('ascii', 0, 4),
+          version: v[4],
+          packet_flag: v[5],
+          pcm_sample_pos: (v.readUInt32LE(10) << 32) + v.readUInt32LE(6),
+          stream_serial_num: strtok.UINT32_LE.get(v, 14),
+          page_number: strtok.UINT32_LE.get(v, 18),
+          check_sum: strtok.UINT32_LE.get(v, 22),
+          segments: v[26]
+        }
+        if (header.type !== 'OggS') {
+          return done(new Error('expected ogg header but was not found'))
+        }
+        cb.pageNumber = header.page_number
+        cb.state++
+        return new strtok.BufferType(header.segments)
+
+      case 1: // segments
+        pageLength = sum(v)
+        cb.state++
+        return new strtok.BufferType(pageLength)
+
+      case 2: // page data
+        innerStream.emit('data', new Buffer(v))
+        cb.state = 0
+        return new strtok.BufferType(27)
+    }
+  })
+
+  // Second level parser that handles the parsing of metadata.
+  // The top level parser emits data that this parser should
+  // handle.
+  strtok.parse(innerStream, function (v, cb) {
+    if (!v) {
+      cb.commentsRead = 0
+      cb.state = 0
+      return new strtok.BufferType(7)
+    }
+
+    switch (cb.state) {
+      case 0: // type
+        if (v.toString() === '\x01vorbis') {
+          cb.state = 6
+          return new strtok.BufferType(23)
+        } else if (v.toString() === '\x03vorbis') {
+          cb.state++
+          return strtok.UINT32_LE
+        } else {
+          return done(new Error('expected vorbis header but found something else'))
+        }
+      break
+
+      case 1: // vendor length
+        cb.state++
+        return new strtok.BufferType(v)
+
+      case 2: // vendor string
+        cb.state++
+        return new strtok.BufferType(4)
+
+      case 3: // user comment list length
+        cb.commentsLength = v.readUInt32LE(0)
+        // no metadata, stop parsing
+        if (cb.commentsLength === 0) return strtok.DONE
+        cb.state++
+        return strtok.UINT32_LE
+
+      case 4: // comment length
+        cb.state++
+        return new strtok.BufferType(v)
+
+      case 5: // comment
+        cb.commentsRead++
+        v = v.toString()
+        var idx = v.indexOf('=')
+        var key = v.slice(0, idx).toUpperCase()
+        var value = v.slice(idx + 1)
+
+        if (key === 'METADATA_BLOCK_PICTURE') {
+          value = common.readVorbisPicture(new Buffer(value, 'base64'))
+        }
+
+        callback(key, value)
+
+        if (cb.commentsRead === cb.commentsLength) {
+          // if we don't want to read the duration
+          // then tell the parent stream to stop
+          stop = !readDuration
+          return strtok.DONE
+        }
+
+        cb.state-- // back to comment length
+        return strtok.UINT32_LE
+
+      case 6: // vorbis info
+        var info = {
+          'version': v.readUInt32LE(0),
+          'channel_mode': v.readUInt8(4),
+          'sample_rate': v.readUInt32LE(5),
+          'bitrate_nominal': v.readUInt32LE(13)
+        }
+        sampleRate = info.sample_rate
+        cb.state = 0
+        return new strtok.BufferType(7)
+    }
+  })
+}
+
+
+/***/ }),
+/* 81 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+var strtok = __webpack_require__(6)
+var common = __webpack_require__(5)
+
+module.exports = function (stream, callback, done) {
+  var currentState = startState
+
+  strtok.parse(stream, function (v, cb) {
+    currentState = currentState.parse(callback, v, done)
+    return currentState.getExpectedType()
+  })
+}
+
+var DataDecoder = function (data) {
+  this.data = data
+  this.offset = 0
+}
+
+DataDecoder.prototype.readInt32 = function () {
+  var value = strtok.UINT32_LE.get(this.data, this.offset)
+  this.offset += 4
+  return value
+}
+
+DataDecoder.prototype.readStringUtf8 = function () {
+  var len = this.readInt32()
+  var value = this.data.toString('utf8', this.offset, this.offset + len)
+  this.offset += len
+  return value
+}
+
+var finishedState = {
+  parse: function (callback) {
+    return this
+  },
+  getExpectedType: function () {
+    return strtok.DONE
+  }
+}
+
+var BlockDataState = function (type, length, nextStateFactory) {
+  this.type = type
+  this.length = length
+  this.nextStateFactory = nextStateFactory
+}
+
+BlockDataState.prototype.parse = function (callback, data) {
+  if (this.type === 4) {
+    var decoder = new DataDecoder(data)
+    decoder.readStringUtf8() // vendor (skip)
+    var commentListLength = decoder.readInt32()
+    var comment
+    var split
+    var i
+
+    for (i = 0; i < commentListLength; i++) {
+      comment = decoder.readStringUtf8()
+      split = comment.split('=')
+      callback(split[0].toUpperCase(), split[1])
+    }
+  } else if (this.type === 6) {
+    var picture = common.readVorbisPicture(data)
+    callback('METADATA_BLOCK_PICTURE', picture)
+  } else if (this.type === 0) { // METADATA_BLOCK_STREAMINFO
+    if (data.length < 34) return // invalid streaminfo
+    var sampleRate = common.strtokUINT24_BE.get(data, 10) >> 4
+    var totalSamples = data.readUInt32BE(14)
+    var duration = totalSamples / sampleRate
+    callback('duration', duration)
+  }
+
+  return this.nextStateFactory()
+}
+
+BlockDataState.prototype.getExpectedType = function () {
+  return new strtok.BufferType(this.length)
+}
+
+var blockHeaderState = {
+  parse: function (callback, data, done) {
+    var header = {
+      lastBlock: (data[0] & 0x80) === 0x80,
+      type: data[0] & 0x7f,
+      length: common.strtokUINT24_BE.get(data, 1)
+    }
+    var followingStateFactory = header.lastBlock ? function () {
+      done()
+      return finishedState
+    } : function () {
+      return blockHeaderState
+    }
+
+    return new BlockDataState(header.type, header.length, followingStateFactory)
+  },
+  getExpectedType: function () {
+    return new strtok.BufferType(4)
+  }
+}
+
+var idState = {
+  parse: function (callback, data, done) {
+    if (data.toString() !== 'fLaC') {
+      done(new Error('expected flac header but was not found'))
+    }
+    return blockHeaderState
+  },
+  getExpectedType: function () {
+    return new strtok.BufferType(4)
+  }
+}
+
+var startState = {
+  parse: function (callback) {
+    return idState
+  },
+  getExpectedType: function () {
+    return strtok.DONE
+  }
+}
+
+
+/***/ }),
+/* 82 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+var common = __webpack_require__(5)
+var strtok = __webpack_require__(6)
+
+module.exports = function (stream, callback, done) {
+  var ApeDescriptor = {
+    len: 44,
+
+    get: function (buf, off) {
+      return {
+        ID: new strtok.StringType(4, 'ascii').get(buf, off),
+        version: strtok.UINT32_LE.get(buf, off + 4) / 1000,
+        descriptorBytes: strtok.UINT32_LE.get(buf, off + 8),
+        headerDataBytes: strtok.UINT32_LE.get(buf, off + 12),
+        APEFrameDataBytes: strtok.UINT32_LE.get(buf, off + 16),
+        APEFrameDataBytesHigh: strtok.UINT32_LE.get(buf, off + 20),
+        terminatingDataBytes: strtok.UINT32_LE.get(buf, off + 24),
+        fileMD5: new strtok.BufferType(16).get(buf, 28)
+      }
+    }
+  }
+
+  // headerDataBytes = 24
+
+  var ApeHeader = {
+    len: 24,
+
+    get: function (buf, off) {
+      return {
+        compressionLevel: strtok.UINT16_LE.get(buf, off),
+        formatFlags: strtok.UINT16_LE.get(buf, off + 2),
+        blocksPerFrame: strtok.UINT32_LE.get(buf, off + 4),
+        finalFrameBlocks: strtok.UINT32_LE.get(buf, off + 8),
+        totalFrames: strtok.UINT32_LE.get(buf, off + 12),
+        bitsPerSample: strtok.UINT16_LE.get(buf, off + 16),
+        channel: strtok.UINT16_LE.get(buf, off + 18),
+        sampleRate: strtok.UINT32_LE.get(buf, off + 20)
+      }
+    }
+  }
+
+  strtok.parse(stream, function (v, cb) {
+    if (v === undefined) {
+      cb.state = 0
+      return ApeDescriptor
+    }
+
+    switch (cb.state) {
+      case 0:
+        if (v.ID !== 'MAC ') {
+          throw new Error('Expected MAC on beginning of file')
+        }
+        cb.state = 1
+        return new strtok.BufferType(v.descriptorBytes - 44)
+
+      case 1:
+        cb.state = 2
+        return ApeHeader
+
+      case 2:
+        callback('duration', calculateDuration(v))
+        return -1
+    }
+  })
+
+  return readMetadata(stream, callback, done)
+}
+
+/**
+ * Calculate the media file duration
+ * @param ah ApeHeader
+ * @return {number} duration in seconds
+ */
+function calculateDuration (ah) {
+  var duration = ah.totalFrames > 1 ? ah.blocksPerFrame * (ah.totalFrames - 1) : 0
+  duration += ah.finalFrameBlocks
+  return duration / ah.sampleRate
+}
+
+function readMetadata (stream, callback, done) {
+  var bufs = []
+
+  // TODO: need to be able to parse the tag if its at the start of the file
+  stream.on('data', function (data) {
+    bufs.push(data)
+  })
+
+  common.streamOnRealEnd(stream, function () {
+    var buffer = Buffer.concat(bufs)
+    var offset = buffer.length - 32
+
+    if (buffer.toString('utf8', offset, offset += 8) !== 'APETAGEX') {
+      done(new Error("expected APE header but wasn't found"))
+    }
+
+    var footer = {
+      version: strtok.UINT32_LE.get(buffer, offset, offset + 4),
+      size: strtok.UINT32_LE.get(buffer, offset + 4, offset + 8),
+      count: strtok.UINT32_LE.get(buffer, offset + 8, offset + 12)
+    }
+
+    // go 'back' to where the 'tags' start
+    offset = buffer.length - footer.size
+
+    for (var i = 0; i < footer.count; i++) {
+      var size = strtok.UINT32_LE.get(buffer, offset, offset += 4)
+      var flags = strtok.UINT32_LE.get(buffer, offset, offset += 4)
+      var kind = (flags & 6) >> 1
+
+      var zero = common.findZero(buffer, offset, buffer.length)
+      var key = buffer.toString('ascii', offset, zero)
+      offset = zero + 1
+
+      if (kind === 0) { // utf-8 textstring
+        var value = buffer.toString('utf8', offset, offset += size)
+        var values = value.split(/\x00/g)
+
+        /*jshint loopfunc:true */
+        values.forEach(function (val) {
+          callback(key, val)
+        })
+      } else if (kind === 1) { // binary (probably artwork)
+        if (key === 'Cover Art (Front)' || key === 'Cover Art (Back)') {
+          var picData = buffer.slice(offset, offset + size)
+
+          var off = 0
+          zero = common.findZero(picData, off, picData.length)
+          var description = picData.toString('utf8', off, zero)
+          off = zero + 1
+
+          var picture = {
+            description: description,
+            data: new Buffer(picData.slice(off))
+          }
+
+          offset += size
+          callback(key, picture)
+        }
+      }
+    }
+    return done()
+  })
+}
+
+
+/***/ }),
+/* 83 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -29248,9 +32703,13 @@ Object.defineProperty(exports, "__esModule", {
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
-var _react = __webpack_require__(9);
+var _react = __webpack_require__(2);
 
 var _react2 = _interopRequireDefault(_react);
+
+var _reactSound = __webpack_require__(23);
+
+var _reactSound2 = _interopRequireDefault(_reactSound);
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
@@ -29284,7 +32743,7 @@ var Details = function (_React$Component) {
       return _react2.default.createElement(
         'h5',
         null,
-        metadata
+        props.playStatus !== _reactSound2.default.status.STOPPED ? metadata : '\xA0'
       );
     }
   }, {
@@ -29296,7 +32755,7 @@ var Details = function (_React$Component) {
         _react2.default.createElement(
           'h3',
           null,
-          this.props.title
+          this.props.playStatus !== _reactSound2.default.status.STOPPED ? this.props.title : '\xA0'
         ),
         this.renderMetaData(this.props)
       );
@@ -29309,7 +32768,7 @@ var Details = function (_React$Component) {
 exports.default = Details;
 
 /***/ }),
-/* 151 */
+/* 84 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -29321,11 +32780,11 @@ Object.defineProperty(exports, "__esModule", {
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
-var _react = __webpack_require__(9);
+var _react = __webpack_require__(2);
 
 var _react2 = _interopRequireDefault(_react);
 
-var _classnames = __webpack_require__(152);
+var _classnames = __webpack_require__(85);
 
 var _classnames2 = _interopRequireDefault(_classnames);
 
@@ -29380,11 +32839,6 @@ var Player = function (_React$Component) {
               'button',
               { onClick: this.props.stop },
               _react2.default.createElement('i', { className: 'fa fa-stop' })
-            ),
-            _react2.default.createElement(
-              'button',
-              { onClick: this.props.random },
-              _react2.default.createElement('i', { className: 'fa fa-random' })
             )
           ),
           _react2.default.createElement(
@@ -29418,7 +32872,7 @@ var Player = function (_React$Component) {
 exports.default = Player;
 
 /***/ }),
-/* 152 */
+/* 85 */
 /***/ (function(module, exports, __webpack_require__) {
 
 var __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_DEFINE_RESULT__;/*!
@@ -29473,7 +32927,7 @@ var __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_DEFINE_RESULT__;/*!
 
 
 /***/ }),
-/* 153 */
+/* 86 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -29485,7 +32939,7 @@ Object.defineProperty(exports, "__esModule", {
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
-var _react = __webpack_require__(9);
+var _react = __webpack_require__(2);
 
 var _react2 = _interopRequireDefault(_react);
 
@@ -29533,7 +32987,7 @@ var Progress = function (_React$Component) {
 exports.default = Progress;
 
 /***/ }),
-/* 154 */
+/* 87 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -29545,11 +32999,11 @@ Object.defineProperty(exports, "__esModule", {
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
-var _react = __webpack_require__(9);
+var _react = __webpack_require__(2);
 
 var _react2 = _interopRequireDefault(_react);
 
-var _reactAutocomplete = __webpack_require__(155);
+var _reactAutocomplete = __webpack_require__(88);
 
 var _reactAutocomplete2 = _interopRequireDefault(_reactAutocomplete);
 
@@ -29627,7 +33081,7 @@ var Search = function (_React$Component) {
 exports.default = Search;
 
 /***/ }),
-/* 155 */
+/* 88 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -29643,13 +33097,13 @@ function _possibleConstructorReturn(self, call) { if (!self) { throw new Referen
 
 function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
 
-var React = __webpack_require__(9);
-var PropTypes = __webpack_require__(46);
+var React = __webpack_require__(2);
+var PropTypes = __webpack_require__(30);
 
-var _require = __webpack_require__(33),
+var _require = __webpack_require__(16),
     findDOMNode = _require.findDOMNode;
 
-var scrollIntoView = __webpack_require__(156);
+var scrollIntoView = __webpack_require__(89);
 
 var IMPERATIVE_API = ['blur', 'checkValidity', 'click', 'focus', 'select', 'setCustomValidity', 'setSelectionRange', 'setRangeText'];
 
@@ -30245,17 +33699,17 @@ Autocomplete.keyDownHandlers = {
 module.exports = Autocomplete;
 
 /***/ }),
-/* 156 */
+/* 89 */
 /***/ (function(module, exports, __webpack_require__) {
 
-module.exports = __webpack_require__(157);
+module.exports = __webpack_require__(90);
 
 
 /***/ }),
-/* 157 */
+/* 90 */
 /***/ (function(module, exports, __webpack_require__) {
 
-var util = __webpack_require__(158);
+var util = __webpack_require__(91);
 
 function scrollIntoView(elem, container, config) {
   config = config || {};
@@ -30380,7 +33834,7 @@ module.exports = scrollIntoView;
 
 
 /***/ }),
-/* 158 */
+/* 91 */
 /***/ (function(module, exports) {
 
 var RE_NUM = /[\-+]?(?:\d*\.|)\d+(?:[eE][\-+]?\d+|)/.source;
@@ -30817,7 +34271,7 @@ mix(utils, domUtils);
 
 
 /***/ }),
-/* 159 */
+/* 92 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -30829,7 +34283,7 @@ Object.defineProperty(exports, "__esModule", {
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
-var _react = __webpack_require__(9);
+var _react = __webpack_require__(2);
 
 var _react2 = _interopRequireDefault(_react);
 
@@ -30872,3485 +34326,6 @@ var Footer = function (_React$Component) {
 }(_react2.default.Component);
 
 exports.default = Footer;
-
-/***/ }),
-/* 160 */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
-var strtok = __webpack_require__(161)
-var equal = __webpack_require__(164)
-var windows1252decoder = __webpack_require__(169)
-
-var asfGuidBuf = new Buffer([
-  0x30, 0x26, 0xB2, 0x75, 0x8E, 0x66, 0xCF, 0x11,
-  0xA6, 0xD9, 0x00, 0xAA, 0x00, 0x62, 0xCE, 0x6C
-])
-exports.asfGuidBuf = asfGuidBuf
-
-exports.getParserForMediaType = function (types, header) {
-  for (var i = 0; i < types.length; i += 1) {
-    var type = types[i]
-    var offset = type.offset || 0
-    if (header.length >= offset + type.buf.length &&
-      equal(header.slice(offset, offset + type.buf.length), type.buf)) {
-      return type.tag
-    }
-  }
-  // default to id3v1.1 if we cannot detect any other tags
-  return __webpack_require__(170)
-}
-
-exports.streamOnRealEnd = function (stream, callback) {
-  stream.on('end', done)
-  stream.on('close', done)
-  function done () {
-    stream.removeListener('end', done)
-    stream.removeListener('close', done)
-    callback()
-  }
-}
-
-exports.readVorbisPicture = function (buffer) {
-  var picture = {}
-  var offset = 0
-
-  picture.type = PICTURE_TYPE[strtok.UINT32_BE.get(buffer, 0)]
-
-  var mimeLen = strtok.UINT32_BE.get(buffer, offset += 4)
-  picture.format = buffer.toString('utf-8', offset += 4, offset + mimeLen)
-
-  var descLen = strtok.UINT32_BE.get(buffer, offset += mimeLen)
-  picture.description = buffer.toString('utf-8', offset += 4, offset + descLen)
-
-  picture.width = strtok.UINT32_BE.get(buffer, offset += descLen)
-  picture.height = strtok.UINT32_BE.get(buffer, offset += 4)
-  picture.colour_depth = strtok.UINT32_BE.get(buffer, offset += 4)
-  picture.indexed_color = strtok.UINT32_BE.get(buffer, offset += 4)
-
-  var picDataLen = strtok.UINT32_BE.get(buffer, offset += 4)
-  picture.data = new Buffer(buffer.slice(offset += 4, offset + picDataLen))
-
-  return picture
-}
-
-exports.removeUnsyncBytes = function (buffer) {
-  var readI = 0
-  var writeI = 0
-  while (readI < buffer.length - 1) {
-    if (readI !== writeI) {
-      buffer[writeI] = buffer[readI]
-    }
-    readI += (buffer[readI] === 0xFF && buffer[readI + 1] === 0) ? 2 : 1
-    writeI++
-  }
-  if (readI < buffer.length) {
-    buffer[writeI++] = buffer[readI++]
-  }
-  return buffer.slice(0, writeI)
-}
-
-exports.findZero = function (buffer, start, end, encoding) {
-  var i = start
-  if (encoding === 'utf16') {
-    while (buffer[i] !== 0 || buffer[i + 1] !== 0) {
-      if (i >= end) return end
-      i += 2
-    }
-    return i
-  } else {
-    while (buffer[i] !== 0) {
-      if (i >= end) return end
-      i++
-    }
-    return i
-  }
-}
-
-exports.sum = function (arr) {
-  var s = 0
-  var i
-  for (i = 0; i < arr.length; i++) {
-    s += arr[i]
-  }
-  return s
-}
-
-function swapBytes (buffer) {
-  var l = buffer.length
-  if (l & 0x01) {
-    throw new Error('Buffer length must be even')
-  }
-  for (var i = 0; i < l; i += 2) {
-    var a = buffer[i]
-    buffer[i] = buffer[i + 1]
-    buffer[i + 1] = a
-  }
-  return buffer
-}
-
-var readUTF16String = exports.readUTF16String = function (buffer) {
-  var offset = 0
-  if (buffer[0] === 0xFE && buffer[1] === 0xFF) { // big endian
-    buffer = swapBytes(buffer)
-    offset = 2
-  } else if (buffer[0] === 0xFF && buffer[1] === 0xFE) { // little endian
-    offset = 2
-  }
-  return buffer.toString('ucs2', offset)
-}
-
-exports.decodeString = function (buffer, encoding) {
-  // annoying workaround for a double BOM issue
-  // https://github.com/leetreveil/musicmetadata/issues/84
-  if (buffer[0] === 0xFF && buffer[1] === 0xFE && buffer[2] === 0xFE && buffer[3] === 0xFF) {
-    buffer = buffer.slice(2)
-  }
-
-  if (encoding === 'utf16le' || encoding === 'utf16') {
-    return readUTF16String(buffer)
-  } else if (encoding === 'utf8') {
-    return buffer.toString('utf8')
-  } else if (encoding === 'iso-8859-1') {
-    return windows1252decoder(buffer)
-  }
-
-  throw Error(encoding + ' encoding is not supported!')
-}
-
-exports.parseGenre = function (origVal) {
-  // match everything inside parentheses
-  var split = origVal.trim().split(/\((.*?)\)/g)
-    .filter(function (val) { return val !== '' })
-
-  var array = []
-  for (var i = 0; i < split.length; i++) {
-    var cur = split[i]
-    if (/^\d+$/.test(cur) && !isNaN(parseInt(cur, 10))) {
-      cur = GENRES[cur]
-    }
-    array.push(cur)
-  }
-
-  return array
-    .filter(function (val) { return val !== undefined })
-    .join('/')
-}
-
-exports.stripNulls = function (str) {
-  str = str.replace(/^\x00+/g, '')
-  str = str.replace(/\x00+$/g, '')
-  return str
-}
-
-exports.strtokUINT24_BE = {
-  len: 3,
-  get: function (buf, off) {
-    return (((buf[off] << 8) + buf[off + 1]) << 8) + buf[off + 2]
-  }
-}
-
-exports.strtokBITSET = {
-  len: 1,
-  get: function (buf, off, bit) {
-    return (buf[off] & (1 << bit)) !== 0
-  }
-}
-
-exports.strtokINT32SYNCSAFE = {
-  len: 4,
-  get: function (buf, off) {
-    return buf[off + 3] & 0x7f | ((buf[off + 2]) << 7) |
-        ((buf[off + 1]) << 14) | ((buf[off]) << 21)
-  }
-}
-
-var PICTURE_TYPE = exports.PICTURE_TYPE = [
-  'Other',
-  "32x32 pixels 'file icon' (PNG only)",
-  'Other file icon',
-  'Cover (front)',
-  'Cover (back)',
-  'Leaflet page',
-  'Media (e.g. lable side of CD)',
-  'Lead artist/lead performer/soloist',
-  'Artist/performer',
-  'Conductor',
-  'Band/Orchestra',
-  'Composer',
-  'Lyricist/text writer',
-  'Recording Location',
-  'During recording',
-  'During performance',
-  'Movie/video screen capture',
-  'A bright coloured fish',
-  'Illustration',
-  'Band/artist logotype',
-  'Publisher/Studio logotype'
-]
-
-var GENRES = exports.GENRES = [
-  'Blues', 'Classic Rock', 'Country', 'Dance', 'Disco', 'Funk', 'Grunge', 'Hip-Hop',
-  'Jazz', 'Metal', 'New Age', 'Oldies', 'Other', 'Pop', 'R&B', 'Rap', 'Reggae', 'Rock',
-  'Techno', 'Industrial', 'Alternative', 'Ska', 'Death Metal', 'Pranks', 'Soundtrack',
-  'Euro-Techno', 'Ambient', 'Trip-Hop', 'Vocal', 'Jazz+Funk', 'Fusion', 'Trance',
-  'Classical', 'Instrumental', 'Acid', 'House', 'Game', 'Sound Clip', 'Gospel', 'Noise',
-  'Alt. Rock', 'Bass', 'Soul', 'Punk', 'Space', 'Meditative', 'Instrumental Pop',
-  'Instrumental Rock', 'Ethnic', 'Gothic', 'Darkwave', 'Techno-Industrial',
-  'Electronic', 'Pop-Folk', 'Eurodance', 'Dream', 'Southern Rock', 'Comedy', 'Cult',
-  'Gangsta Rap', 'Top 40', 'Christian Rap', 'Pop/Funk', 'Jungle', 'Native American',
-  'Cabaret', 'New Wave', 'Psychedelic', 'Rave', 'Showtunes', 'Trailer', 'Lo-Fi', 'Tribal',
-  'Acid Punk', 'Acid Jazz', 'Polka', 'Retro', 'Musical', 'Rock & Roll', 'Hard Rock',
-  'Folk', 'Folk/Rock', 'National Folk', 'Swing', 'Fast-Fusion', 'Bebob', 'Latin', 'Revival',
-  'Celtic', 'Bluegrass', 'Avantgarde', 'Gothic Rock', 'Progressive Rock', 'Psychedelic Rock',
-  'Symphonic Rock', 'Slow Rock', 'Big Band', 'Chorus', 'Easy Listening', 'Acoustic', 'Humour',
-  'Speech', 'Chanson', 'Opera', 'Chamber Music', 'Sonata', 'Symphony', 'Booty Bass', 'Primus',
-  'Porn Groove', 'Satire', 'Slow Jam', 'Club', 'Tango', 'Samba', 'Folklore',
-  'Ballad', 'Power Ballad', 'Rhythmic Soul', 'Freestyle', 'Duet', 'Punk Rock', 'Drum Solo',
-  'A Cappella', 'Euro-House', 'Dance Hall', 'Goa', 'Drum & Bass', 'Club-House',
-  'Hardcore', 'Terror', 'Indie', 'BritPop', 'Negerpunk', 'Polsk Punk', 'Beat',
-  'Christian Gangsta Rap', 'Heavy Metal', 'Black Metal', 'Crossover', 'Contemporary Christian',
-  'Christian Rock', 'Merengue', 'Salsa', 'Thrash Metal', 'Anime', 'JPop', 'Synthpop',
-  'Abstract', 'Art Rock', 'Baroque', 'Bhangra', 'Big Beat', 'Breakbeat', 'Chillout',
-  'Downtempo', 'Dub', 'EBM', 'Eclectic', 'Electro', 'Electroclash', 'Emo', 'Experimental',
-  'Garage', 'Global', 'IDM', 'Illbient', 'Industro-Goth', 'Jam Band', 'Krautrock',
-  'Leftfield', 'Lounge', 'Math Rock', 'New Romantic', 'Nu-Breakz', 'Post-Punk', 'Post-Rock',
-  'Psytrance', 'Shoegaze', 'Space Rock', 'Trop Rock', 'World Music', 'Neoclassical', 'Audiobook',
-  'Audio Theatre', 'Neue Deutsche Welle', 'Podcast', 'Indie Rock', 'G-Funk', 'Dubstep',
-  'Garage Rock', 'Psybient'
-]
-
-
-/***/ }),
-/* 161 */
-/***/ (function(module, exports, __webpack_require__) {
-
-// A fast streaming parser library.
-
-var assert = __webpack_require__(13);
-var Buffer = __webpack_require__(163).Buffer;
-
-// Buffer for parse() to handle types that span more than one buffer
-var SPANNING_BUF = new Buffer(1024);
-
-// Possibly call flush()
-var maybeFlush = function(b, o, len, flush) {
-    if (o + len > b.length) {
-        if (typeof(flush) !== 'function') {
-            throw new Error(
-                'Buffer out of space and no valid flush() function found'
-            );
-        }
-
-        flush(b, o);
-
-        return 0;
-    }
-
-    return o;
-};
-
-// Sentinel types
-
-var DEFER = {};
-exports.DEFER = DEFER;
-
-var DONE = {};
-exports.DONE = DONE;
-
-// Primitive types
-
-var UINT8 = {
-    len : 1,
-    get : function(buf, off) {
-        return buf[off];
-    },
-    put : function(b, o, v, flush) {
-        assert.equal(typeof o, 'number');
-        assert.equal(typeof v, 'number');
-        assert.ok(v >= 0 && v <= 0xff);
-        assert.ok(o >= 0);
-        assert.ok(this.len <= b.length);
-
-        var no = maybeFlush(b, o, this.len, flush);
-        b[no] = v & 0xff;
-
-        return (no - o) + this.len;
-    }
-};
-exports.UINT8 = UINT8;
-
-var UINT16_LE = {
-    len : 2,
-    get : function(buf, off) {
-        return buf[off] | (buf[off + 1] << 8);
-    },
-    put : function(b, o, v, flush) {
-        assert.equal(typeof o, 'number');
-        assert.equal(typeof v, 'number');
-        assert.ok(v >= 0 && v <= 0xffff);
-        assert.ok(o >= 0);
-        assert.ok(this.len <= b.length);
-
-        var no = maybeFlush(b, o, this.len, flush);
-        b[no] = v & 0xff;
-        b[no + 1] = (v >>> 8) & 0xff;
-
-        return (no - o) + this.len;
-    }
-};
-exports.UINT16_LE = UINT16_LE;
-
-var UINT16_BE = {
-    len : 2,
-    get : function(buf, off) {
-        return (buf[off] << 8) | buf[off + 1];
-    },
-    put : function(b, o, v, flush) {
-        assert.equal(typeof o, 'number');
-        assert.equal(typeof v, 'number');
-        assert.ok(v >= 0 && v <= 0xffff);
-        assert.ok(o >= 0);
-        assert.ok(this.len <= b.length);
-
-        var no = maybeFlush(b, o, this.len, flush);
-        b[no] = (v >>> 8) & 0xff;
-        b[no + 1] = v & 0xff;
-
-        return (no - o) + this.len;
-    }
-};
-exports.UINT16_BE = UINT16_BE;
-
-var UINT24_LE = {
-    len : 3,
-    get : function(buf, off) {
-        return buf[off] | (buf[off + 1] << 8) | (buf[off + 2] << 16);
-    },
-    put : function(b, o, v, flush) {
-        assert.equal(typeof o, 'number');
-        assert.equal(typeof v, 'number');
-        assert.ok(v >= 0 && v <= 0xffffff);
-        assert.ok(o >= 0);
-        assert.ok(this.len <= b.length);
-
-        var no = maybeFlush(b, o, this.len, flush);
-        b[no] = v & 0xff;
-        b[no + 1] = (v >>> 8) & 0xff;
-        b[no + 2] = (v >>> 16) & 0xff;
-
-        return (no - o) + this.len;
-    }
-};
-exports.UINT24_LE = UINT24_LE;
-
-var UINT24_BE = {
-    len : 3,
-    get : function (buf, off) {
-        return (((buf[off] << 8) + buf[off + 1]) << 8) + buf[off + 2]
-    },
-    put : function(b, o, v, flush) {
-        assert.equal(typeof o, 'number');
-        assert.equal(typeof v, 'number');
-        assert.ok(v >= 0 && v <= 0xffffff);
-        assert.ok(o >= 0);
-        assert.ok(this.len <= b.length);
-
-        var no = maybeFlush(b, o, this.len, flush);
-        b[no] = (v >>> 16) & 0xff;
-        b[no + 1] = (v >>> 8) & 0xff;
-        b[no + 2] = v & 0xff;
-
-        return (no - o) + this.len;
-    }
-};
-exports.UINT24_BE = UINT24_BE;
-
-var UINT32_LE = {
-    len : 4,
-    get : function(buf, off) {
-        // Shifting the MSB by 24 directly causes it to go negative if its
-        // last bit is high, so we instead shift by 23 and multiply by 2.
-        // Also, using binary OR to count the MSB if its last bit is high
-        // causes the value to go negative. Use addition there.
-        return (buf[off] | (buf[off + 1] << 8) | (buf[off + 2] << 16)) +
-               ((buf[off + 3] << 23) * 2);
-    },
-    put : function(b, o, v, flush) {
-        assert.equal(typeof o, 'number');
-        assert.equal(typeof v, 'number');
-        assert.ok(v >= 0 && v <= 0xffffffff);
-        assert.ok(o >= 0);
-        assert.ok(this.len <= b.length);
-
-        var no = maybeFlush(b, o, this.len, flush);
-        b[no] = v & 0xff;
-        b[no + 1] = (v >>> 8) & 0xff;
-        b[no + 2] = (v >>> 16) & 0xff;
-        b[no + 3] = (v >>> 24) & 0xff;
-
-        return (no - o) + this.len;
-    }
-};
-exports.UINT32_LE = UINT32_LE;
-
-var UINT32_BE = {
-    len : 4,
-    get : function(buf, off) {
-        // See comments in UINT32_LE.get()
-        return ((buf[off] << 23) * 2) +
-               ((buf[off + 1] << 16) | (buf[off + 2] << 8) | buf[off + 3]);
-    },
-    put : function(b, o, v, flush) {
-        assert.equal(typeof o, 'number');
-        assert.equal(typeof v, 'number');
-        assert.ok(v >= 0 && v <= 0xffffffff);
-        assert.ok(o >= 0);
-        assert.ok(this.len <= b.length);
-
-        var no = maybeFlush(b, o, this.len, flush);
-        b[no] = (v >>> 24) & 0xff;
-        b[no + 1] = (v >>> 16) & 0xff;
-        b[no + 2] = (v >>> 8) & 0xff;
-        b[no + 3] = v & 0xff;
-
-        return (no - o) + this.len;
-    }
-};
-exports.UINT32_BE = UINT32_BE;
-
-var INT8 = {
-    len : 1,
-    get : function(buf, off)  {
-        var v = UINT8.get(buf, off);
-        return ((v & 0x80) === 0x80) ?
-            (-128 + (v & 0x7f)) :
-            v;
-    },
-    put : function(b, o, v, flush) {
-        assert.equal(typeof o, 'number');
-        assert.equal(typeof v, 'number');
-        assert.ok(v >= -128 && v <= 127);
-        assert.ok(o >= 0);
-        assert.ok(this.len <= b.length);
-
-        var no = maybeFlush(b, o, this.len, flush);
-        b[no] = v & 0xff;
-
-        return (no - o) + this.len;
-    }
-};
-exports.INT8 = INT8;
-
-var INT16_BE = {
-    len : 2,
-    get : function(buf, off)  {
-        var v = UINT16_BE.get(buf, off);
-        return ((v & 0x8000) === 0x8000) ?
-            (-32768 + (v & 0x7fff)) :
-            v;
-    },
-    put : function(b, o, v, flush) {
-        assert.equal(typeof o, 'number');
-        assert.equal(typeof v, 'number');
-        assert.ok(v >= -32768 && v <= 32767);
-        assert.ok(o >= 0);
-        assert.ok(this.len <= b.length);
-
-        var no = maybeFlush(b, o, this.len, flush);
-        b[no] = ((v & 0xffff) >>> 8) & 0xff;
-        b[no + 1] = v & 0xff;
-
-        return (no - o) + this.len;
-    }
-};
-exports.INT16_BE = INT16_BE;
-
-var INT24_BE = {
-    len : 3,
-    get : function(buf, off)  {
-       var v = UINT24_BE.get(buf, off);
-        return ((v & 0x800000) === 0x800000) ?
-          (-0x800000 + (v & 0x7fffff)) : v;
-    },
-    put : function(b, o, v, flush) {
-        assert.equal(typeof o, 'number');
-        assert.equal(typeof v, 'number');
-        assert.ok(v >= -0x800000 && v <= 0x7fffff);
-        assert.ok(o >= 0);
-        assert.ok(this.len <= b.length);
-
-        var no = maybeFlush(b, o, this.len, flush);
-        b[no] = (v >>> 16) & 0xff;
-        b[no + 1] = (v >>> 8) & 0xff;
-        b[no + 2] = v & 0xff;
-
-        return (no - o) + this.len;
-    }
-};
-exports.INT24_BE = INT24_BE;
-
-var INT32_BE = {
-    len : 4,
-    get : function(buf, off)  {
-        // We cannot check for 0x80000000 directly, as this always returns
-        // false. Instead, check for the two's-compliment value, which
-        // behaves as expected. Also, we cannot subtract our value all at
-        // once, so do it in two steps to avoid sign busting.
-        var v = UINT32_BE.get(buf, off);
-        return ((v & 0x80000000) === -2147483648) ?
-            ((v & 0x7fffffff) - 1073741824 - 1073741824) :
-            v;
-    },
-    put : function(b, o, v, flush) {
-        assert.equal(typeof o, 'number');
-        assert.equal(typeof v, 'number');
-        assert.ok(v >= -2147483648 && v <= 2147483647);
-        assert.ok(o >= 0);
-        assert.ok(this.len <= b.length);
-
-        var no = maybeFlush(b, o, this.len, flush);
-        b[no] = (v >>> 24) & 0xff;
-        b[no + 1] = (v >>> 16) & 0xff;
-        b[no + 2] = (v >>> 8) & 0xff;
-        b[no + 3] = v & 0xff;
-
-        return (no - o) + this.len;
-    }
-};
-exports.INT32_BE = INT32_BE;
-
-// Complex types
-//
-// These types are intended to allow callers to re-use them by manipulating
-// the 'len' and other properties directly.
-
-var IgnoreType = function(l) {
-  this.len = l;
-  this.get = function() {
-    return null;
-  };
-};
-exports.IgnoreType = IgnoreType;
-
-
-var BufferType = function(l) {
-    var self = this;
-
-    self.len = l;
-
-    self.get = function(buf, off) {
-        return buf.slice(off, off + this.len);
-    };
-};
-exports.BufferType = BufferType;
-
-var StringType = function(l, e) {
-    var self = this;
-
-    self.len = l;
-
-    self.encoding = e;
-
-    self.get = function(buf, off) {
-        return buf.toString(e, off, off + this.len);
-    };
-};
-exports.StringType = StringType;
-
-// Parse a stream
-var parse = function(s, cb) {
-    // Type of data that we're to parse next; if DEFER, we're awaiting
-    // an invocation of typeCallback
-    var type = DEFER;
-
-    // Data that we've seen but not yet processed / handed off to cb; first
-    // valid byte to process is always bufs[0][bufOffset]
-    var bufs = [];
-    var bufsLen = 0;
-    var bufOffset = 0;
-    var ignoreLen = 0;
-
-    // Callback for FSM to tell us what type to expect next
-    var typeCallback = function(t) {
-        if (type !== DEFER) {
-            throw new Error('refusing to overwrite non-DEFER type');
-        }
-
-        type = t;
-
-        emitData();
-    };
-
-    // Process data that we have accumulated so far, emitting any type(s)
-    // collected. This is the main parsing loop.
-    //
-    // Out strategy for handling buffers is to shift them off of the bufs[]
-    // array until we have enough accumulated to account for type.len bytes.
-    var emitData = function() {
-        var b;
-        while (type !== DONE && type !== DEFER && bufsLen >= type.len) {
-            b = bufs[0];
-            var bo = bufOffset;
-
-            assert.ok(bufOffset >= 0 && bufOffset < b.length);
-
-            if ((b.length - bufOffset) < type.len) {
-                if (SPANNING_BUF.length < type.len) {
-                    SPANNING_BUF = new Buffer(
-                        Math.pow(2, Math.ceil(Math.log(type.len) / Math.log(2)))
-                    );
-                }
-
-                b = SPANNING_BUF;
-                bo = 0;
-
-                var bytesCopied = 0;
-                while (bytesCopied < type.len && bufs.length > 0) {
-                    var bb = bufs[0];
-                    var copyLength = Math.min(type.len - bytesCopied, bb.length - bufOffset);
-
-                    // TODO: Manually copy bytes if we don't need many of them.
-                    //       Bouncing down into C++ land to invoke
-                    //       Buffer.copy() is expensive enough that we
-                    //       shouldnt' do it unless we have a lot of dato to
-                    //       copy.
-                    bb.copy(
-                        b,
-                        bytesCopied,
-                        bufOffset,
-                        bufOffset + copyLength
-                    );
-
-                    bytesCopied += copyLength;
-
-                    if (copyLength < (bb.length - bufOffset)) {
-                        assert.equal(bytesCopied, type.len);
-                        bufOffset += copyLength;
-                    } else {
-                        assert.equal(bufOffset + copyLength, bb.length);
-                        bufs.shift();
-                        bufOffset = 0;
-                    }
-                }
-
-                assert.equal(bytesCopied, type.len);
-            } else if ((b.length - bufOffset) === type.len) {
-                bufs.shift();
-                bufOffset = 0;
-            } else {
-                bufOffset += type.len;
-            }
-
-            bufsLen -= type.len;
-            type = cb(type.get(b, bo), typeCallback);
-            if (type instanceof IgnoreType) {
-              ignoreLen += type.len;
-              if (ignoreLen >= bufsLen) {
-                // clear all buffers
-                ignoreLen -= bufsLen;
-                bufsLen = 0;
-                bufs = [];
-                bufOffset = 0;
-              } else if (ignoreLen < bufs[0].length - bufOffset) {
-                // set bufOffset correctly
-                bufsLen -= ignoreLen;
-                bufOffset += ignoreLen;
-                ignoreLen = 0;
-              } else if (bufsLen > 0) {
-                // shift some buffers and set bufOffset correctly.
-                bufsLen -= ignoreLen;
-                ignoreLen += bufOffset;
-                while (ignoreLen >= bufs[0].length) {
-                  ignoreLen -= bufs.shift().length;
-                }
-                bufOffset = ignoreLen;
-                ignoreLen = 0;
-              }
-              type = cb(type.get(), typeCallback);
-            }
-        }
-
-        if (type === DONE) {
-            s.removeListener('data', dataListener);
-
-            // Pump all of the buffers that we already saw back through the
-            // stream; the protocol layer will have set up listeners for this
-            // event if it cares about the remaining data.
-            while (bufs.length > 0) {
-                b = bufs.shift();
-
-                if (bufOffset > 0) {
-                    b = b.slice(bufOffset, b.length);
-                    bufOffset = 0;
-                }
-
-                s.emit('data', b);
-            }
-        }
-    };
-
-    // Listen for data from our stream
-    var dataListener = function(d) {
-        if (d.length <= ignoreLen) {
-          // ignore this data
-          assert.strictEqual(bufsLen, 0);
-          assert.strictEqual(bufs.length, 0);
-          ignoreLen -= d.length;
-        } else if (ignoreLen > 0) {
-          assert.strictEqual(bufsLen, 0);
-          bufsLen = d.length - ignoreLen;
-          bufs.push(d.slice(ignoreLen));
-          ignoreLen = 0;
-          emitData();
-        } else {
-          bufs.push(d);
-          bufsLen += d.length;
-          emitData();
-        }
-    };
-
-    // Get the initial type
-    type = cb(undefined, typeCallback);
-    if (type !== DONE) {
-        s.on('data', dataListener);
-    }
-};
-exports.parse = parse;
-
-
-/***/ }),
-/* 162 */
-/***/ (function(module, exports) {
-
-module.exports = require("events");
-
-/***/ }),
-/* 163 */
-/***/ (function(module, exports) {
-
-module.exports = require("buffer");
-
-/***/ }),
-/* 164 */
-/***/ (function(module, exports, __webpack_require__) {
-
-var pSlice = Array.prototype.slice;
-var objectKeys = __webpack_require__(167);
-var isArguments = __webpack_require__(168);
-
-var deepEqual = module.exports = function (actual, expected, opts) {
-  if (!opts) opts = {};
-  // 7.1. All identical values are equivalent, as determined by ===.
-  if (actual === expected) {
-    return true;
-
-  } else if (actual instanceof Date && expected instanceof Date) {
-    return actual.getTime() === expected.getTime();
-
-  // 7.3. Other pairs that do not both pass typeof value == 'object',
-  // equivalence is determined by ==.
-  } else if (typeof actual != 'object' && typeof expected != 'object') {
-    return opts.strict ? actual === expected : actual == expected;
-
-  // 7.4. For all other Object pairs, including Array objects, equivalence is
-  // determined by having the same number of owned properties (as verified
-  // with Object.prototype.hasOwnProperty.call), the same set of keys
-  // (although not necessarily the same order), equivalent values for every
-  // corresponding key, and an identical 'prototype' property. Note: this
-  // accounts for both named and indexed properties on Arrays.
-  } else {
-    return objEquiv(actual, expected, opts);
-  }
-}
-
-function isUndefinedOrNull(value) {
-  return value === null || value === undefined;
-}
-
-function isBuffer (x) {
-  if (!x || typeof x !== 'object' || typeof x.length !== 'number') return false;
-  if (typeof x.copy !== 'function' || typeof x.slice !== 'function') {
-    return false;
-  }
-  if (x.length > 0 && typeof x[0] !== 'number') return false;
-  return true;
-}
-
-function objEquiv(a, b, opts) {
-  var i, key;
-  if (isUndefinedOrNull(a) || isUndefinedOrNull(b))
-    return false;
-  // an identical 'prototype' property.
-  if (a.prototype !== b.prototype) return false;
-  //~~~I've managed to break Object.keys through screwy arguments passing.
-  //   Converting to array solves the problem.
-  if (isArguments(a)) {
-    if (!isArguments(b)) {
-      return false;
-    }
-    a = pSlice.call(a);
-    b = pSlice.call(b);
-    return deepEqual(a, b, opts);
-  }
-  if (isBuffer(a)) {
-    if (!isBuffer(b)) {
-      return false;
-    }
-    if (a.length !== b.length) return false;
-    for (i = 0; i < a.length; i++) {
-      if (a[i] !== b[i]) return false;
-    }
-    return true;
-  }
-  try {
-    var ka = objectKeys(a),
-        kb = objectKeys(b);
-  } catch (e) {//happens when one is a string literal and the other isn't
-    return false;
-  }
-  // having the same number of owned properties (keys incorporates
-  // hasOwnProperty)
-  if (ka.length != kb.length)
-    return false;
-  //the same set of keys (although not necessarily the same order),
-  ka.sort();
-  kb.sort();
-  //~~~cheap key test
-  for (i = ka.length - 1; i >= 0; i--) {
-    if (ka[i] != kb[i])
-      return false;
-  }
-  //equivalent values for every corresponding key, and
-  //~~~possibly expensive deep test
-  for (i = ka.length - 1; i >= 0; i--) {
-    key = ka[i];
-    if (!deepEqual(a[key], b[key], opts)) return false;
-  }
-  return true;
-}
-
-
-/***/ }),
-/* 165 */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
-var strtok = __webpack_require__(161)
-var common = __webpack_require__(160)
-
-module.exports = function (stream, callback, done, readDuration) {
-  strtok.parse(stream, function (v, cb) {
-    // the very first thing we expect to see is the first atom's length
-    if (!v) {
-      cb.metaAtomsTotalLength = 0
-      cb.state = 0
-      return strtok.UINT32_BE
-    }
-
-    switch (cb.state) {
-      case -1: // skip
-        cb.state = 0
-        return strtok.UINT32_BE
-
-      case 0: // atom length
-        cb.atomLength = v
-        cb.state++
-        return new strtok.BufferType(4)
-
-      case 1: // atom name
-        v = v.toString('binary')
-        cb.atomName = v
-
-        // meta has 4 bytes padding at the start (skip)
-        if (v === 'meta') {
-          cb.state = -1
-          return new strtok.IgnoreType(4)
-        }
-
-        if (readDuration) {
-          if (v === 'mdhd') {
-            cb.state = 3
-            return new strtok.BufferType(cb.atomLength - 8)
-          }
-        }
-
-        if (!~CONTAINER_ATOMS.indexOf(v)) {
-          if (cb.atomContainer === 'ilst') {
-            cb.state = 2
-            return new strtok.BufferType(cb.atomLength - 8)
-          }
-          cb.state = -1
-          return new strtok.IgnoreType(cb.atomLength - 8)
-        }
-
-        // dig into container atoms
-        cb.atomContainer = v
-        cb.atomContainerLength = cb.atomLength
-        cb.state--
-        return strtok.UINT32_BE
-
-      case 2: // ilst atom
-        cb.metaAtomsTotalLength += cb.atomLength
-        var result = processMetaAtom(v, cb.atomName, cb.atomLength - 8)
-        if (result.length > 0) {
-          for (var i = 0; i < result.length; i++) {
-            callback(cb.atomName, result[i])
-          }
-        }
-
-        // we can stop processing atoms once we get to the end of the ilst atom
-        if (cb.metaAtomsTotalLength >= cb.atomContainerLength - 8) {
-          return done()
-        }
-
-        cb.state = 0
-        return strtok.UINT32_BE
-
-      case 3: // mdhd atom
-        // TODO: support version 1
-        var sampleRate = v.readUInt32BE(12)
-        var duration = v.readUInt32BE(16)
-        callback('duration', duration / sampleRate)
-        cb.state = 0
-        return strtok.UINT32_BE
-    }
-
-    // if we ever get this this point something bad has happened
-    return done(new Error('error parsing'))
-  })
-}
-
-function processMetaAtom (data, atomName, atomLength) {
-  var result = []
-  var offset = 0
-
-  // ignore proprietary iTunes atoms (for now)
-  if (atomName === '----') return result
-
-  while (offset < atomLength) {
-    var length = strtok.UINT32_BE.get(data, offset)
-    var type = TYPES[strtok.UINT32_BE.get(data, offset + 8)]
-
-    var content = processMetaDataAtom(data.slice(offset + 12, offset + length), type, atomName)
-
-    result.push(content)
-    offset += length
-  }
-
-  return result
-
-  function processMetaDataAtom (data, type, atomName) {
-    switch (type) {
-      case 'text':
-        return data.toString('utf8', 4)
-
-      case 'uint8':
-        if (atomName === 'gnre') {
-          var genreInt = strtok.UINT8.get(data, 5)
-          return common.GENRES[genreInt - 1]
-        }
-        if (atomName === 'trkn' || atomName === 'disk') {
-          return data[7] + '/' + data[9]
-        }
-
-        return strtok.UINT8.get(data, 4)
-
-      case 'jpeg':
-      case 'png':
-        return {
-          format: 'image/' + type,
-          data: new Buffer(data.slice(4))
-        }
-    }
-  }
-}
-
-var TYPES = {
-  '0': 'uint8',
-  '1': 'text',
-  '13': 'jpeg',
-  '14': 'png',
-  '21': 'uint8'
-}
-
-var CONTAINER_ATOMS = ['moov', 'udta', 'meta', 'ilst', 'trak', 'mdia']
-
-
-/***/ }),
-/* 166 */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
-var events = __webpack_require__(162)
-var common = __webpack_require__(160)
-var strtok = __webpack_require__(161)
-var through = __webpack_require__(171)
-var fs = __webpack_require__(18)
-
-module.exports = function (stream, opts, callback) {
-  if (typeof opts === 'function') {
-    callback = opts
-    opts = {}
-  }
-
-  var emitter = new events.EventEmitter()
-
-  var fsize = function (cb) {
-    if (opts.fileSize) {
-      process.nextTick(function () {
-        cb(opts.fileSize)
-      })
-    } else if (stream.hasOwnProperty('path')) {
-      fs.stat(stream.path, function (err, stats) {
-        if (err) throw err
-        cb(stats.size)
-      })
-    } else if (stream.hasOwnProperty('fileSize')) {
-      stream.fileSize(cb)
-    } else if (opts.duration) {
-      emitter.emit(
-        'done',
-        new Error('for non file streams, specify the size of the stream with a fileSize option'))
-    }
-  }
-
-  // pipe to an internal stream so we aren't messing
-  // with the stream passed to us by our users
-  var istream = stream.pipe(through(null, null, {autoDestroy: false}))
-
-  var metadata = {
-    title: '',
-    artist: [],
-    albumartist: [],
-    album: '',
-    year: '',
-    track: { no: 0, of: 0 },
-    genre: [],
-    disk: { no: 0, of: 0 },
-    picture: [],
-    duration: 0
-  }
-
-  var aliased = {}
-
-  var hasReadData = false
-  istream.once('data', function (result) {
-    hasReadData = true
-    var parser = common.getParserForMediaType(headerTypes, result)
-    parser(istream, function (event, value) {
-      if (value === null) return
-      var alias = lookupAlias(event)
-      // emit original event & value
-      if (event !== alias) {
-        emitter.emit(event, value)
-      }
-      buildAliases(alias, event, value, aliased)
-    }, done, opts.hasOwnProperty('duration'), fsize)
-    // re-emitting the first data chunk so the
-    // parser picks the stream up from the start
-    istream.emit('data', result)
-  })
-
-  istream.on('end', function () {
-    if (!hasReadData) {
-      done(new Error('Could not read any data from this stream'))
-    }
-  })
-
-  istream.on('close', onClose)
-
-  function onClose () {
-    done(new Error('Unexpected end of stream'))
-  }
-
-  function done (exception) {
-    istream.removeListener('close', onClose)
-
-    // We only emit aliased events once the 'done' event has been raised,
-    // this is because an alias like 'artist' could have values split
-    // over many data chunks.
-    for (var _alias in aliased) {
-      if (aliased.hasOwnProperty(_alias)) {
-        var val
-        if (_alias === 'title' || _alias === 'album' ||
-          _alias === 'year' || _alias === 'duration') {
-          val = aliased[_alias][0]
-        } else {
-          val = aliased[_alias]
-        }
-
-        emitter.emit(_alias, val)
-
-        if (metadata.hasOwnProperty(_alias)) {
-          metadata[_alias] = val
-        }
-      }
-    }
-
-    if (callback) {
-      callback(exception, metadata)
-    }
-    return strtok.DONE
-  }
-
-  return emitter
-}
-
-function buildAliases (alias, event, value, aliased) {
-  // we need to do something special for these events
-  var cleaned
-  if (event === 'TRACKTOTAL' || event === 'DISCTOTAL') {
-    var evt
-    if (event === 'TRACKTOTAL') evt = 'track'
-    if (event === 'DISCTOTAL') evt = 'disk'
-
-    cleaned = parseInt(value, 10)
-    if (isNaN(cleaned)) cleaned = 0
-    if (!aliased.hasOwnProperty(evt)) {
-      aliased[evt] = { no: 0, of: cleaned }
-    } else {
-      aliased[evt].of = cleaned
-    }
-  }
-
-  // if the event has been aliased then we need to clean it before
-  // it is emitted to the user. e.g. genre (20) -> Electronic
-  if (alias) {
-    cleaned = value
-    if (alias === 'genre') cleaned = common.parseGenre(value)
-    if (alias === 'picture') cleaned = cleanupPicture(value)
-
-    if (alias === 'track' || alias === 'disk') {
-      cleaned = cleanupTrack(value)
-
-      if (aliased[alias]) {
-        aliased[alias].no = cleaned.no
-        return
-      } else {
-        aliased[alias] = cleaned
-        return
-      }
-    }
-
-    // if we haven't previously seen this tag then
-    // initialize it to an array, ready for values to be entered
-    if (!aliased.hasOwnProperty(alias)) {
-      aliased[alias] = []
-    }
-
-    if (cleaned.constructor === Array) {
-      aliased[alias] = cleaned
-    } else {
-      aliased[alias].push(cleaned)
-    }
-  }
-}
-
-function lookupAlias (event) {
-  // mappings for common metadata types(id3v2.3, id3v2.2, id4, vorbis, APEv2)
-  var mappings = [
-    ['title', 'TIT2', 'TT2', '©nam', 'TITLE', 'Title'],
-    ['artist', 'TPE1', 'TP1', '©ART', 'ARTIST', 'Author'],
-    ['albumartist', 'TPE2', 'TP2', 'aART', 'ALBUMARTIST', 'ENSEMBLE', 'WM/AlbumArtist'],
-    ['album', 'TALB', 'TAL', '©alb', 'ALBUM', 'WM/AlbumTitle'],
-    ['year', 'TDRC', 'TYER', 'TYE', '©day', 'DATE', 'Year', 'WM/Year'],
-    ['comment', 'COMM', 'COM', '©cmt', 'COMMENT'],
-    ['track', 'TRCK', 'TRK', 'trkn', 'TRACKNUMBER', 'Track', 'WM/TrackNumber'],
-    ['disk', 'TPOS', 'TPA', 'disk', 'DISCNUMBER', 'Disk'],
-    ['genre', 'TCON', 'TCO', '©gen', 'gnre', 'GENRE', 'WM/Genre'],
-    ['picture', 'APIC', 'PIC', 'covr', 'METADATA_BLOCK_PICTURE', 'Cover Art (Front)',
-    'Cover Art (Back)'],
-    ['composer', 'TCOM', 'TCM', '©wrt', 'COMPOSER'],
-    ['duration'],
-    ['lyrics', 'SYLT']
-  ]
-
-  return mappings.reduce(function (a, b) {
-    if (a !== undefined) return a
-
-    var hasAlias = b.map(function (val) {
-      return val.toUpperCase()
-    }).indexOf(event.toUpperCase())
-
-    if (hasAlias > -1) {
-      return b[0]
-    }
-  }, undefined)
-}
-
-// TODO: a string of 1of1 would fail to be converted
-// converts 1/10 to no : 1, of : 10
-// or 1 to no : 1, of : 0
-function cleanupTrack (origVal) {
-  var split = origVal.toString().split('/')
-  return {
-    no: parseInt(split[0], 10) || 0,
-    of: parseInt(split[1], 10) || 0
-  }
-}
-
-function cleanupPicture (picture) {
-  var newFormat
-  if (picture.format) {
-    var split = picture.format.toLowerCase().split('/')
-    newFormat = (split.length > 1) ? split[1] : split[0]
-    if (newFormat === 'jpeg') newFormat = 'jpg'
-  } else {
-    newFormat = 'jpg'
-  }
-  return { format: newFormat, data: picture.data }
-}
-
-var headerTypes = [
-  {
-    buf: common.asfGuidBuf,
-    tag: __webpack_require__(172)
-  },
-  {
-    buf: new Buffer('ID3'),
-    tag: __webpack_require__(173)
-  },
-  {
-    buf: new Buffer('ftypM4A'),
-    tag: __webpack_require__(165),
-    offset: 4
-  },
-  {
-    buf: new Buffer('ftypmp42'),
-    tag: __webpack_require__(165),
-    offset: 4
-  },
-  {
-    buf: new Buffer('OggS'),
-    tag: __webpack_require__(175)
-  },
-  {
-    buf: new Buffer('fLaC'),
-    tag: __webpack_require__(176)
-  },
-  {
-    buf: new Buffer('MAC'),
-    tag: __webpack_require__(177)
-  }
-]
-
-
-/***/ }),
-/* 167 */
-/***/ (function(module, exports) {
-
-exports = module.exports = typeof Object.keys === 'function'
-  ? Object.keys : shim;
-
-exports.shim = shim;
-function shim (obj) {
-  var keys = [];
-  for (var key in obj) keys.push(key);
-  return keys;
-}
-
-
-/***/ }),
-/* 168 */
-/***/ (function(module, exports) {
-
-var supportsArgumentsClass = (function(){
-  return Object.prototype.toString.call(arguments)
-})() == '[object Arguments]';
-
-exports = module.exports = supportsArgumentsClass ? supported : unsupported;
-
-exports.supported = supported;
-function supported(object) {
-  return Object.prototype.toString.call(object) == '[object Arguments]';
-};
-
-exports.unsupported = unsupported;
-function unsupported(object){
-  return object &&
-    typeof object == 'object' &&
-    typeof object.length == 'number' &&
-    Object.prototype.hasOwnProperty.call(object, 'callee') &&
-    !Object.prototype.propertyIsEnumerable.call(object, 'callee') ||
-    false;
-};
-
-
-/***/ }),
-/* 169 */
-/***/ (function(module, exports) {
-
-var windows1252 = [8364, 129, 8218, 402, 8222, 8230, 8224, 8225, 710, 8240, 352,
-8249, 338, 141, 381, 143, 144, 8216, 8217, 8220, 8221, 8226, 8211, 8212, 732,
-8482, 353, 8250, 339, 157, 382, 376, 160, 161, 162, 163, 164, 165, 166, 167, 168,
-169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184,
-185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200,
-201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216,
-217, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232,
-233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243, 244, 245, 246, 247,
-248, 249, 250, 251, 252, 253, 254, 255]
-
-function inRange (a, min, max) {
-  return min <= a && a <= max
-}
-
-function codePointToString (cp) {
-  if (cp <= 0xFFFF) {
-    return String.fromCharCode(cp)
-  } else {
-    cp -= 0x10000
-    return String.fromCharCode((cp >> 10) + 0xD800, (cp & 0x3FF) + 0xDC00)
-  }
-}
-
-function singleByteDecoder (bite, index) {
-  if (inRange(bite, 0x00, 0x7F)) {
-    return bite
-  }
-
-  var code_point = index[bite - 0x80]
-  if (code_point === null) {
-    throw Error('invaliding encoding')
-  }
-
-  return code_point
-}
-
-module.exports = function (buffer) {
-  var str = ''
-  for (var i = 0; i < buffer.length; i++) {
-    str += codePointToString(singleByteDecoder(buffer[i], windows1252))
-  }
-  return str
-}
-
-
-/***/ }),
-/* 170 */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
-var common = __webpack_require__(160)
-
-module.exports = function (stream, callback, done) {
-  var endData = null
-  stream.on('data', function (data) {
-    endData = data
-  })
-  common.streamOnRealEnd(stream, function () {
-    var offset = endData.length - 128
-    var header = endData.toString('ascii', offset, offset += 3)
-    if (header !== 'TAG') {
-      return done(new Error('Could not find metadata header'))
-    }
-
-    var title = endData.toString('ascii', offset, offset += 30)
-    callback('title', title.trim().replace(/\x00/g, ''))
-
-    var artist = endData.toString('ascii', offset, offset += 30)
-    callback('artist', artist.trim().replace(/\x00/g, ''))
-
-    var album = endData.toString('ascii', offset, offset += 30)
-    callback('album', album.trim().replace(/\x00/g, ''))
-
-    var year = endData.toString('ascii', offset, offset += 4)
-    callback('year', year.trim().replace(/\x00/g, ''))
-
-    var comment = endData.toString('ascii', offset, offset += 28)
-    callback('comment', comment.trim().replace(/\x00/g, ''))
-
-    var track = endData[endData.length - 2]
-    callback('track', track)
-
-    if (endData[endData.length - 1] in common.GENRES) {
-      var genre = common.GENRES[endData[endData.length - 1]]
-      callback('genre', genre)
-    }
-    return done()
-  })
-}
-
-
-/***/ }),
-/* 171 */
-/***/ (function(module, exports, __webpack_require__) {
-
-var Stream = __webpack_require__(19)
-
-// through
-//
-// a stream that does nothing but re-emit the input.
-// useful for aggregating a series of changing but not ending streams into one stream)
-
-exports = module.exports = through
-through.through = through
-
-//create a readable writable stream.
-
-function through (write, end, opts) {
-  write = write || function (data) { this.queue(data) }
-  end = end || function () { this.queue(null) }
-
-  var ended = false, destroyed = false, buffer = [], _ended = false
-  var stream = new Stream()
-  stream.readable = stream.writable = true
-  stream.paused = false
-
-//  stream.autoPause   = !(opts && opts.autoPause   === false)
-  stream.autoDestroy = !(opts && opts.autoDestroy === false)
-
-  stream.write = function (data) {
-    write.call(this, data)
-    return !stream.paused
-  }
-
-  function drain() {
-    while(buffer.length && !stream.paused) {
-      var data = buffer.shift()
-      if(null === data)
-        return stream.emit('end')
-      else
-        stream.emit('data', data)
-    }
-  }
-
-  stream.queue = stream.push = function (data) {
-//    console.error(ended)
-    if(_ended) return stream
-    if(data === null) _ended = true
-    buffer.push(data)
-    drain()
-    return stream
-  }
-
-  //this will be registered as the first 'end' listener
-  //must call destroy next tick, to make sure we're after any
-  //stream piped from here.
-  //this is only a problem if end is not emitted synchronously.
-  //a nicer way to do this is to make sure this is the last listener for 'end'
-
-  stream.on('end', function () {
-    stream.readable = false
-    if(!stream.writable && stream.autoDestroy)
-      process.nextTick(function () {
-        stream.destroy()
-      })
-  })
-
-  function _end () {
-    stream.writable = false
-    end.call(stream)
-    if(!stream.readable && stream.autoDestroy)
-      stream.destroy()
-  }
-
-  stream.end = function (data) {
-    if(ended) return
-    ended = true
-    if(arguments.length) stream.write(data)
-    _end() // will emit or queue
-    return stream
-  }
-
-  stream.destroy = function () {
-    if(destroyed) return
-    destroyed = true
-    ended = true
-    buffer.length = 0
-    stream.writable = stream.readable = false
-    stream.emit('close')
-    return stream
-  }
-
-  stream.pause = function () {
-    if(stream.paused) return
-    stream.paused = true
-    return stream
-  }
-
-  stream.resume = function () {
-    if(stream.paused) {
-      stream.paused = false
-      stream.emit('resume')
-    }
-    drain()
-    //may have become paused again,
-    //as drain emits 'data'.
-    if(!stream.paused)
-      stream.emit('drain')
-    return stream
-  }
-  return stream
-}
-
-
-
-/***/ }),
-/* 172 */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
-var strtok = __webpack_require__(161)
-var common = __webpack_require__(160)
-var equal = __webpack_require__(164)
-
-var decodeString = common.decodeString
-
-module.exports = function (stream, callback, done) {
-  var currentState = startState
-
-  strtok.parse(stream, function (v, cb) {
-    currentState = currentState.parse(callback, v, done)
-    return currentState.getExpectedType()
-  })
-}
-
-var startState = {
-  parse: function (callback) {
-    return idState
-  }
-}
-
-var finishedState = {
-  parse: function (callback) {
-    return this
-  },
-  getExpectedType: function () {
-    return strtok.DONE
-  }
-}
-
-var idState = {
-  parse: function (callback, data, done) {
-    if (!equal(common.asfGuidBuf, data)) {
-      done(new Error('expected asf header but was not found'))
-      return finishedState
-    }
-    return headerDataState
-  },
-  getExpectedType: function () {
-    return new strtok.BufferType(common.asfGuidBuf.length)
-  }
-}
-
-function ReadObjectState (size, objectCount) {
-  this.size = size
-  this.objectCount = objectCount
-}
-
-ReadObjectState.prototype.parse = function (callback, data, done) {
-  var guid = data.slice(0, 16)
-  var size = readUInt64LE(data, 16)
-  var State = stateByGuid(guid) || IgnoreObjectState
-  this.objectCount -= 1
-  this.size -= size
-  var nextState = (this.objectCount <= 0) ? finishedState : this
-  return new State(nextState, size - 24)
-}
-
-ReadObjectState.prototype.getExpectedType = function () {
-  return new strtok.BufferType(24)
-}
-
-var headerDataState = {
-  parse: function (callback, data, done) {
-    var size = readUInt64LE(data, 0)
-    var objectCount = data.readUInt32LE(8)
-    return new ReadObjectState(size, objectCount)
-  },
-  getExpectedType: function () {
-    // 8 bytes size
-    // 4 bytes object count
-    // 2 bytes ignore
-    return new strtok.BufferType(14)
-  }
-}
-
-function IgnoreObjectState (nextState, size) {
-  this.nextState = nextState
-  this.size = size
-}
-
-IgnoreObjectState.prototype.parse = function (callback, data, done) {
-  if (this.nextState === finishedState) done()
-  return this.nextState
-}
-
-IgnoreObjectState.prototype.getExpectedType = function () {
-  return new strtok.IgnoreType(this.size)
-}
-
-function ContentDescriptionObjectState (nextState, size) {
-  this.nextState = nextState
-  this.size = size
-}
-
-var contentDescTags = ['Title', 'Author', 'Copyright', 'Description', 'Rating']
-ContentDescriptionObjectState.prototype.parse = function (callback, data, done) {
-  var lengths = [
-    data.readUInt16LE(0),
-    data.readUInt16LE(2),
-    data.readUInt16LE(4),
-    data.readUInt16LE(6),
-    data.readUInt16LE(8)
-  ]
-  var pos = 10
-  for (var i = 0; i < contentDescTags.length; i += 1) {
-    var tagName = contentDescTags[i]
-    var length = lengths[i]
-    var end = pos + length
-    if (length > 0) {
-      var value = parseUnicodeAttr(data.slice(pos, end))
-      callback(tagName, value)
-    }
-    pos = end
-  }
-  if (this.nextState === finishedState) done()
-  return this.nextState
-}
-
-ContentDescriptionObjectState.prototype.getExpectedType = function () {
-  return new strtok.BufferType(this.size)
-}
-
-ContentDescriptionObjectState.guid = new Buffer([
-  0x33, 0x26, 0xB2, 0x75, 0x8E, 0x66, 0xCF, 0x11,
-  0xA6, 0xD9, 0x00, 0xAA, 0x00, 0x62, 0xCE, 0x6C
-])
-
-function ExtendedContentDescriptionObjectState (nextState, size) {
-  this.nextState = nextState
-  this.size = size
-}
-
-var attributeParsers = [
-  parseUnicodeAttr,
-  parseByteArrayAttr,
-  parseBoolAttr,
-  parseDWordAttr,
-  parseQWordAttr,
-  parseWordAttr,
-  parseByteArrayAttr
-]
-
-ExtendedContentDescriptionObjectState.prototype.parse = function (callback, data, done) {
-  var attrCount = data.readUInt16LE(0)
-  var pos = 2
-  for (var i = 0; i < attrCount; i += 1) {
-    var nameLen = data.readUInt16LE(pos)
-    pos += 2
-    var name = parseUnicodeAttr(data.slice(pos, pos + nameLen))
-    pos += nameLen
-    var valueType = data.readUInt16LE(pos)
-    pos += 2
-    var valueLen = data.readUInt16LE(pos)
-    pos += 2
-    var value = data.slice(pos, pos + valueLen)
-    pos += valueLen
-    var parseAttr = attributeParsers[valueType]
-    if (!parseAttr) {
-      done(new Error('unexpected value type: ' + valueType))
-      return finishedState
-    }
-    var attr = parseAttr(value)
-    callback(name, attr)
-  }
-  if (this.nextState === finishedState) done()
-  return this.nextState
-}
-
-ExtendedContentDescriptionObjectState.prototype.getExpectedType = function () {
-  return new strtok.BufferType(this.size)
-}
-
-ExtendedContentDescriptionObjectState.guid = new Buffer([
-  0x40, 0xA4, 0xD0, 0xD2, 0x07, 0xE3, 0xD2, 0x11,
-  0x97, 0xF0, 0x00, 0xA0, 0xC9, 0x5E, 0xA8, 0x50
-])
-
-function FilePropertiesObject (nextState, size) {
-  this.nextState = nextState
-  this.size = size
-}
-
-FilePropertiesObject.prototype.parse = function (callback, data, done) {
-  // in miliseconds
-  var playDuration = parseQWordAttr(data.slice(40, 48)) / 10000
-  callback('duration', playDuration / 1000)
-
-  if (this.nextState === finishedState) done()
-  return this.nextState
-}
-
-FilePropertiesObject.prototype.getExpectedType = function () {
-  return new strtok.BufferType(this.size)
-}
-
-FilePropertiesObject.guid = new Buffer([
-  0xA1, 0xDC, 0xAB, 0x8C, 0x47, 0xA9, 0xCF, 0x11,
-  0x8E, 0xE4, 0x00, 0xC0, 0x0C, 0x20, 0x53, 0x65
-])
-
-var guidStates = [
-  FilePropertiesObject,
-  ContentDescriptionObjectState,
-  ExtendedContentDescriptionObjectState
-]
-function stateByGuid (guidBuf) {
-  for (var i = 0; i < guidStates.length; i += 1) {
-    var GuidState = guidStates[i]
-    if (equal(GuidState.guid, guidBuf)) return GuidState
-  }
-  return null
-}
-
-function parseUnicodeAttr (buf) {
-  return common.stripNulls(decodeString(buf, 'utf16le'))
-}
-
-function parseByteArrayAttr (buf) {
-  var newBuf = new Buffer(buf.length)
-  buf.copy(newBuf)
-  return newBuf
-}
-
-function parseBoolAttr (buf) {
-  return parseDWordAttr(buf) === 1
-}
-
-function parseDWordAttr (buf) {
-  return buf.readUInt32LE(0)
-}
-
-function parseQWordAttr (buf) {
-  return readUInt64LE(buf, 0)
-}
-
-function parseWordAttr (buf) {
-  return buf.readUInt16LE(0)
-}
-
-function readUInt64LE (buffer, offset) {
-  var high = buffer.slice(offset, offset + 4).readUInt32LE(0)
-  var low = buffer.slice(offset + 4, offset + 8).readUInt32LE(0)
-  var maxuint32 = Math.pow(2, 32)
-  return ((low * maxuint32) + (high >>> 0))
-}
-
-
-/***/ }),
-/* 173 */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
-var strtok = __webpack_require__(161)
-var parser = __webpack_require__(174)
-var common = __webpack_require__(160)
-
-module.exports = function (stream, callback, done, readDuration, fileSize) {
-  var frameCount = 0
-  var audioFrameHeader
-  var bitrates = []
-
-  strtok.parse(stream, function (v, cb) {
-    if (v === undefined) {
-      cb.state = 0
-      return new strtok.BufferType(10)
-    }
-
-    switch (cb.state) {
-      case 0: // header
-        if (v.toString('ascii', 0, 3) !== 'ID3') {
-          return done(new Error('expected id3 header but was not found'))
-        }
-        cb.id3Header = {
-          version: '2.' + v[3] + '.' + v[4],
-          major: v[3],
-          unsync: common.strtokBITSET.get(v, 5, 7),
-          xheader: common.strtokBITSET.get(v, 5, 6),
-          xindicator: common.strtokBITSET.get(v, 5, 5),
-          footer: common.strtokBITSET.get(v, 5, 4),
-          size: common.strtokINT32SYNCSAFE.get(v, 6)
-        }
-        cb.state = 1
-        return new strtok.BufferType(cb.id3Header.size)
-
-      case 1: // id3 data
-        parseMetadata(v, cb.id3Header, done).map(function (obj) {
-          callback.apply(this, obj)
-        })
-        if (readDuration) {
-          cb.state = 2
-          return new strtok.BufferType(4)
-        }
-        return done()
-
-      case 1.5:
-        var shiftedBuffer = new Buffer(4)
-        cb.frameFragment.copy(shiftedBuffer, 0, 1)
-        v.copy(shiftedBuffer, 3)
-        v = shiftedBuffer
-        cb.state = 2
-
-      /* falls through */
-      case 2: // audio frame header
-
-        // we have found the id3 tag at the end of the file, ignore
-        if (v.slice(0, 3).toString() === 'TAG') {
-          return done()
-        }
-
-        // first 11 bits should all be set (frame sync)
-        if ((v[0] === 0xFF && (v[1] & 0xE0) === 0xE0) !== true) {
-          // keep scanning for frame header, id3 tag may
-          // have some padding (0x00) at the end
-          return seekFirstAudioFrame(done)
-        }
-
-        var header = {
-          'version': readMpegVersion(v[1]),
-          'layer': readLayer(v[1]),
-          'protection': !(v[1] & 0x1),
-          'padding': !!((v[2] & 0x02) >> 1),
-          'mode': readMode(v[3])
-        }
-
-        if (isNaN(header.version) || isNaN(header.layer)) {
-          return seekFirstAudioFrame(done)
-        }
-
-        // mp3 files are only found in MPEG1/2 Layer 3
-        if ((header.version !== 1 && header.version !== 2) || header.layer !== 3) {
-          return seekFirstAudioFrame(done)
-        }
-
-        header.samples_per_frame = calcSamplesPerFrame(
-          header.version, header.layer)
-
-        header.bitrate = id3BitrateCalculator(v[2], header.version, header.layer)
-        if (isNaN(header.bitrate)) {
-          return seekFirstAudioFrame(done)
-        }
-
-        header.sample_rate = samplingRateCalculator(v[2], header.version)
-        if (isNaN(header.sample_rate)) {
-          return seekFirstAudioFrame(done)
-        }
-
-        header.slot_size = calcSlotSize(header.layer)
-
-        header.sideinfo_length = calculateSideInfoLength(
-          header.layer, header.mode, header.version)
-
-        var bps = header.samples_per_frame / 8.0
-        var fsize = (bps * (header.bitrate * 1000) / header.sample_rate) +
-          ((header.padding) ? header.slot_size : 0)
-        header.frame_size = Math.floor(fsize)
-
-        audioFrameHeader = header
-        frameCount++
-        bitrates.push(header.bitrate)
-
-        // xtra header only exists in first frame
-        if (frameCount === 1) {
-          cb.offset = header.sideinfo_length
-          cb.state = 3
-          return new strtok.BufferType(header.sideinfo_length)
-        }
-
-        // the stream is CBR if the first 3 frame bitrates are the same
-        if (readDuration && fileSize && frameCount === 3 && areAllSame(bitrates)) {
-          fileSize(function (size) {
-            // subtract non audio stream data from duration calculation
-            size = size - cb.id3Header.size
-            var kbps = (header.bitrate * 1000) / 8
-            callback('duration', size / kbps)
-            cb(done())
-          })
-          return strtok.DEFER
-        }
-
-        // once we know the file is VBR attach listener to end of
-        // stream so we can do the duration calculation when we
-        // have counted all the frames
-        if (readDuration && frameCount === 4) {
-          stream.once('end', function () {
-            callback('duration', calcDuration(frameCount,
-              header.samples_per_frame, header.sample_rate))
-            done()
-          })
-        }
-
-        cb.state = 5
-        return new strtok.IgnoreType(header.frame_size - 4)
-
-      case 3: // side information
-        cb.offset += 12
-        cb.state = 4
-        return new strtok.BufferType(12)
-
-      case 4: // xtra / info header
-        cb.state = 5
-        var frameDataLeft = audioFrameHeader.frame_size - 4 - cb.offset
-
-        var id = v.toString('ascii', 0, 4)
-        if (id !== 'Xtra' && id !== 'Info' && id !== 'Xing') {
-          return new strtok.IgnoreType(frameDataLeft)
-        }
-
-        // frames field is not present
-        if ((v[7] & 0x01) !== 1) {
-          return new strtok.IgnoreType(frameDataLeft)
-        }
-
-        var numFrames = v.readUInt32BE(8)
-        var ah = audioFrameHeader
-        callback('duration', calcDuration(numFrames, ah.samples_per_frame, ah.sample_rate))
-        return done()
-
-      case 5: // skip frame data
-        cb.state = 2
-        return new strtok.BufferType(4)
-    }
-
-    function seekFirstAudioFrame (done) {
-      if (frameCount) {
-        return done(new Error('expected frame header but was not found'))
-      }
-
-      cb.frameFragment = v
-      cb.state = 1.5
-      return new strtok.BufferType(1)
-    }
-  })
-}
-
-function areAllSame (array) {
-  var first = array[0]
-  return array.every(function (element) {
-    return element === first
-  })
-}
-
-function calcDuration (numFrames, samplesPerFrame, sampleRate) {
-  return Math.round(numFrames * (samplesPerFrame / sampleRate))
-}
-
-function parseMetadata (data, header, done) {
-  var offset = 0
-  var frames = []
-
-  if (header.xheader) {
-    offset += data.readUInt32BE(0)
-  }
-
-  while (true) {
-    if (offset === data.length) break
-    var frameHeaderBytes = data.slice(offset, offset += getFrameHeaderLength(header.major, done))
-    var frameHeader = readFrameHeader(frameHeaderBytes, header.major)
-
-    // Last frame. Check first char is a letter, bit of defensive programming
-    if (frameHeader.id === '' || frameHeader.id === '\u0000\u0000\u0000\u0000' ||
-      'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.indexOf(frameHeader.id[0]) === -1) {
-      break
-    }
-
-    var frameDataBytes = data.slice(offset, offset += frameHeader.length)
-    var frameData = readFrameData(frameDataBytes, frameHeader, header.major)
-    for (var pos in frameData) {
-      if (frameData.hasOwnProperty(pos)) {
-        frames.push([frameHeader.id, frameData[pos]])
-      }
-    }
-  }
-  return frames
-}
-
-function readFrameData (v, frameHeader, majorVer) {
-  switch (majorVer) {
-    case 2:
-      return parser.readData(v, frameHeader.id, null, majorVer)
-    case 3:
-    case 4:
-      if (frameHeader.flags.format.unsync) {
-        v = common.removeUnsyncBytes(v)
-      }
-      if (frameHeader.flags.format.data_length_indicator) {
-        v = v.slice(4, v.length)
-      }
-      return parser.readData(v, frameHeader.id, frameHeader.flags, majorVer)
-  }
-}
-
-function readFrameHeader (v, majorVer) {
-  var header = {}
-  switch (majorVer) {
-    case 2:
-      header.id = v.toString('ascii', 0, 3)
-      header.length = common.strtokUINT24_BE.get(v, 3, 6)
-    break
-    case 3:
-      header.id = v.toString('ascii', 0, 4)
-      header.length = strtok.UINT32_BE.get(v, 4, 8)
-      header.flags = readFrameFlags(v.slice(8, 10))
-    break
-    case 4:
-      header.id = v.toString('ascii', 0, 4)
-      header.length = common.strtokINT32SYNCSAFE.get(v, 4, 8)
-      header.flags = readFrameFlags(v.slice(8, 10))
-    break
-  }
-  return header
-}
-
-function getFrameHeaderLength (majorVer, done) {
-  switch (majorVer) {
-    case 2:
-      return 6
-    case 3:
-    case 4:
-      return 10
-    default:
-      return done(new Error('header version is incorrect'))
-  }
-}
-
-function readFrameFlags (b) {
-  return {
-    status: {
-      tag_alter_preservation: common.strtokBITSET.get(b, 0, 6),
-      file_alter_preservation: common.strtokBITSET.get(b, 0, 5),
-      read_only: common.strtokBITSET.get(b, 0, 4)
-    },
-    format: {
-      grouping_identity: common.strtokBITSET.get(b, 1, 7),
-      compression: common.strtokBITSET.get(b, 1, 3),
-      encryption: common.strtokBITSET.get(b, 1, 2),
-      unsync: common.strtokBITSET.get(b, 1, 1),
-      data_length_indicator: common.strtokBITSET.get(b, 1, 0)
-    }
-  }
-}
-
-function readMpegVersion (byte) {
-  var bits = (byte & 0x18) >> 3
-
-  if (bits === 0x00) {
-    return 2.5
-  } else if (bits === 0x01) {
-    return 'reserved'
-  } else if (bits === 0x02) {
-    return 2
-  } else if (bits === 0x03) {
-    return 1
-  }
-}
-
-function readLayer (byte) {
-  var bits = (byte & 0x6) >> 1
-
-  if (bits === 0x00) {
-    return 'reserved'
-  } else if (bits === 0x01) {
-    return 3
-  } else if (bits === 0x02) {
-    return 2
-  } else if (bits === 0x03) {
-    return 1
-  }
-}
-
-function readMode (byte) {
-  var bits = (byte & 0xC0) >> 6
-  if (bits === 0x00) {
-    return 'stereo'
-  } else if (bits === 0x01) {
-    return 'joint_stereo'
-  } else if (bits === 0x02) {
-    return 'dual_channel'
-  } else if (bits === 0x03) {
-    return 'mono'
-  }
-}
-
-function calcSamplesPerFrame (version, layer) {
-  if (layer === 1) return 384
-  if (layer === 2) return 1152
-  if (layer === 3 && version === 1) return 1152
-  if (layer === 3 && (version === 2 || version === 2.5)) return 576
-}
-
-function calculateSideInfoLength (layer, mode, version) {
-  if (layer !== 3) return 2
-  if (['stereo', 'joint_stereo', 'dual_channel'].indexOf(mode) >= 0) {
-    if (version === 1) {
-      return 32
-    } else if (version === 2 || version === 2.5) {
-      return 17
-    }
-  } else if (mode === 'mono') {
-    if (version === 1) {
-      return 17
-    } else if (version === 2 || version === 2.5) {
-      return 9
-    }
-  }
-}
-
-function calcSlotSize (layer) {
-  if (layer === 0) return 'reserved'
-  if (layer === 1) return 4
-  if (layer === 2) return 1
-  if (layer === 3) return 1
-}
-
-// [bits][mpegversion + layer] = bitrate
-var bitrate_index = {
-    0x01: {'11': 32, '12': 32, '13': 32, '21': 32, '22': 8, '23': 8},
-    0x02: {'11': 64, '12': 48, '13': 40, '21': 48, '22': 16, '23': 16},
-    0x03: {'11': 96, '12': 56, '13': 48, '21': 56, '22': 24, '23': 24},
-    0x04: {'11': 128, '12': 64, '13': 56, '21': 64, '22': 32, '23': 32},
-    0x05: {'11': 160, '12': 80, '13': 64, '21': 80, '22': 40, '23': 40},
-    0x06: {'11': 192, '12': 96, '13': 80, '21': 96, '22': 48, '23': 48},
-    0x07: {'11': 224, '12': 112, '13': 96, '21': 112, '22': 56, '23': 56},
-    0x08: {'11': 256, '12': 128, '13': 112, '21': 128, '22': 64, '23': 64},
-    0x09: {'11': 288, '12': 160, '13': 128, '21': 144, '22': 80, '23': 80},
-    0x0A: {'11': 320, '12': 192, '13': 160, '21': 160, '22': 96, '23': 96},
-    0x0B: {'11': 352, '12': 224, '13': 192, '21': 176, '22': 112, '23': 112},
-    0x0C: {'11': 384, '12': 256, '13': 224, '21': 192, '22': 128, '23': 128},
-    0x0D: {'11': 416, '12': 320, '13': 256, '21': 224, '22': 144, '23': 144},
-    0x0E: {'11': 448, '12': 384, '13': 320, '21': 256, '22': 160, '23': 160}
-  }
-
-function id3BitrateCalculator (byte, mpegVersion, layer) {
-  var bits = (byte & 0xF0) >> 4
-  if (bits === 0x00) return 'free'
-  if (bits === 0x0F) return 'reserved'
-  return bitrate_index[bits][mpegVersion.toString() + layer]
-}
-
-// [version][bits] == sampling rate
-var sampling_rate_freq_index = {
-    1: {0x00: 44100, 0x01: 48000, 0x02: 32000},
-    2: {0x00: 22050, 0x01: 24000, 0x02: 16000},
-    2.5: {0x00: 11025, 0x01: 12000, 0x02: 8000}
-}
-
-function samplingRateCalculator (byte, version) {
-  var bits = (byte & 0xC) >> 2
-  if (bits === 0x03) return 'reserved'
-  return sampling_rate_freq_index[version][bits]
-}
-
-
-/***/ }),
-/* 174 */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
-var Buffer = __webpack_require__(163).Buffer
-var strtok = __webpack_require__(161)
-var common = __webpack_require__(160)
-var findZero = common.findZero
-var decodeString = common.decodeString
-
-exports.readData = function readData (b, type, flags, major) {
-  var encoding = getTextEncoding(b[0])
-  var length = b.length
-  var offset = 0
-  var output = []
-  var nullTerminatorLength = getNullTerminatorLength(encoding)
-  var fzero
-
-  if (type[0] === 'T') {
-    type = 'T*'
-  }
-
-  switch (type) {
-    case 'T*':
-      var text = decodeString(b.slice(1), encoding).replace(/\x00+$/, '')
-      // id3v2.4 defines that multiple T* values are separated by 0x00
-      output = text.split(/\x00/g)
-      break
-
-    case 'PIC':
-    case 'APIC':
-      var pic = {}
-
-      offset += 1
-
-      switch (major) {
-        case 2:
-          pic.format = decodeString(b.slice(offset, offset + 3), encoding)
-          offset += 3
-          break
-        case 3:
-        case 4:
-          var enc = 'iso-8859-1'
-          fzero = findZero(b, offset, length, enc)
-          pic.format = decodeString(b.slice(offset, fzero), enc)
-          offset = fzero + 1
-          break
-      }
-
-      pic.type = common.PICTURE_TYPE[b[offset]]
-      offset += 1
-
-      fzero = findZero(b, offset, length, encoding)
-      pic.description = decodeString(b.slice(offset, fzero), encoding)
-      offset = fzero + nullTerminatorLength
-
-      pic.data = new Buffer(b.slice(offset, length))
-      output = [pic]
-      break
-
-    case 'CNT':
-    case 'PCNT':
-      output = [strtok.UINT32_BE.get(b, 0)]
-      break
-
-    case 'SYLT':
-      // skip text encoding (1 byte),
-      //      language (3 bytes),
-      //      time stamp format (1 byte),
-      //      content type (1 byte),
-      //      content descriptor (1 byte)
-      offset += 7
-
-      output = []
-      while (offset < length) {
-        var txt = b.slice(offset, offset = findZero(b, offset, length, encoding))
-        offset += 5 // push offset forward one +  4 byte timestamp
-        output.push(decodeString(txt, encoding))
-      }
-      break
-
-    case 'ULT':
-    case 'USLT':
-    case 'COM':
-    case 'COMM':
-      var out = {}
-
-      offset += 1
-
-      out.language = decodeString(b.slice(offset, offset + 3), 'iso-8859-1')
-      offset += 3
-
-      fzero = findZero(b, offset, length, encoding)
-      out.description = decodeString(b.slice(offset, fzero), encoding)
-      offset = fzero + nullTerminatorLength
-
-      out.text = decodeString(b.slice(offset, length), encoding).replace(/\x00+$/, '')
-
-      output = [out]
-      break
-
-    case 'UFID':
-      var ufid = {}
-
-      fzero = findZero(b, offset, length, encoding)
-      ufid.owner_identifier = decodeString(b.slice(offset, fzero), encoding)
-      offset = fzero + nullTerminatorLength
-
-      ufid.identifier = b.slice(offset, length)
-      output = [ufid]
-      break
-  }
-
-  return output
-}
-
-function getTextEncoding (byte) {
-  switch (byte) {
-    case 0x00:
-      return 'iso-8859-1' // binary
-    case 0x01:
-    case 0x02:
-      return 'utf16' // 01 = with bom, 02 = without bom
-    case 0x03:
-      return 'utf8'
-    default:
-      return 'utf8'
-  }
-}
-
-function getNullTerminatorLength (enc) {
-  switch (enc) {
-    case 'utf16':
-      return 2
-    default:
-      return 1
-  }
-}
-
-
-/***/ }),
-/* 175 */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
-var events = __webpack_require__(162)
-var strtok = __webpack_require__(161)
-var common = __webpack_require__(160)
-var sum = common.sum
-
-module.exports = function (stream, callback, done, readDuration) {
-  var innerStream = new events.EventEmitter()
-
-  var pageLength = 0
-  var sampleRate = 0
-  var header
-  var stop = false
-
-  stream.on('end', function () {
-    if (readDuration) {
-      callback('duration', header.pcm_sample_pos / sampleRate)
-      done()
-    }
-  })
-
-  // top level parser that handles the parsing of pages
-  strtok.parse(stream, function (v, cb) {
-    if (!v) {
-      cb.state = 0
-      return new strtok.BufferType(27)
-    }
-
-    if (stop) {
-      return done()
-    }
-
-    switch (cb.state) {
-      case 0: // header
-        header = {
-          type: v.toString('ascii', 0, 4),
-          version: v[4],
-          packet_flag: v[5],
-          pcm_sample_pos: (v.readUInt32LE(10) << 32) + v.readUInt32LE(6),
-          stream_serial_num: strtok.UINT32_LE.get(v, 14),
-          page_number: strtok.UINT32_LE.get(v, 18),
-          check_sum: strtok.UINT32_LE.get(v, 22),
-          segments: v[26]
-        }
-        if (header.type !== 'OggS') {
-          return done(new Error('expected ogg header but was not found'))
-        }
-        cb.pageNumber = header.page_number
-        cb.state++
-        return new strtok.BufferType(header.segments)
-
-      case 1: // segments
-        pageLength = sum(v)
-        cb.state++
-        return new strtok.BufferType(pageLength)
-
-      case 2: // page data
-        innerStream.emit('data', new Buffer(v))
-        cb.state = 0
-        return new strtok.BufferType(27)
-    }
-  })
-
-  // Second level parser that handles the parsing of metadata.
-  // The top level parser emits data that this parser should
-  // handle.
-  strtok.parse(innerStream, function (v, cb) {
-    if (!v) {
-      cb.commentsRead = 0
-      cb.state = 0
-      return new strtok.BufferType(7)
-    }
-
-    switch (cb.state) {
-      case 0: // type
-        if (v.toString() === '\x01vorbis') {
-          cb.state = 6
-          return new strtok.BufferType(23)
-        } else if (v.toString() === '\x03vorbis') {
-          cb.state++
-          return strtok.UINT32_LE
-        } else {
-          return done(new Error('expected vorbis header but found something else'))
-        }
-      break
-
-      case 1: // vendor length
-        cb.state++
-        return new strtok.BufferType(v)
-
-      case 2: // vendor string
-        cb.state++
-        return new strtok.BufferType(4)
-
-      case 3: // user comment list length
-        cb.commentsLength = v.readUInt32LE(0)
-        // no metadata, stop parsing
-        if (cb.commentsLength === 0) return strtok.DONE
-        cb.state++
-        return strtok.UINT32_LE
-
-      case 4: // comment length
-        cb.state++
-        return new strtok.BufferType(v)
-
-      case 5: // comment
-        cb.commentsRead++
-        v = v.toString()
-        var idx = v.indexOf('=')
-        var key = v.slice(0, idx).toUpperCase()
-        var value = v.slice(idx + 1)
-
-        if (key === 'METADATA_BLOCK_PICTURE') {
-          value = common.readVorbisPicture(new Buffer(value, 'base64'))
-        }
-
-        callback(key, value)
-
-        if (cb.commentsRead === cb.commentsLength) {
-          // if we don't want to read the duration
-          // then tell the parent stream to stop
-          stop = !readDuration
-          return strtok.DONE
-        }
-
-        cb.state-- // back to comment length
-        return strtok.UINT32_LE
-
-      case 6: // vorbis info
-        var info = {
-          'version': v.readUInt32LE(0),
-          'channel_mode': v.readUInt8(4),
-          'sample_rate': v.readUInt32LE(5),
-          'bitrate_nominal': v.readUInt32LE(13)
-        }
-        sampleRate = info.sample_rate
-        cb.state = 0
-        return new strtok.BufferType(7)
-    }
-  })
-}
-
-
-/***/ }),
-/* 176 */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
-var strtok = __webpack_require__(161)
-var common = __webpack_require__(160)
-
-module.exports = function (stream, callback, done) {
-  var currentState = startState
-
-  strtok.parse(stream, function (v, cb) {
-    currentState = currentState.parse(callback, v, done)
-    return currentState.getExpectedType()
-  })
-}
-
-var DataDecoder = function (data) {
-  this.data = data
-  this.offset = 0
-}
-
-DataDecoder.prototype.readInt32 = function () {
-  var value = strtok.UINT32_LE.get(this.data, this.offset)
-  this.offset += 4
-  return value
-}
-
-DataDecoder.prototype.readStringUtf8 = function () {
-  var len = this.readInt32()
-  var value = this.data.toString('utf8', this.offset, this.offset + len)
-  this.offset += len
-  return value
-}
-
-var finishedState = {
-  parse: function (callback) {
-    return this
-  },
-  getExpectedType: function () {
-    return strtok.DONE
-  }
-}
-
-var BlockDataState = function (type, length, nextStateFactory) {
-  this.type = type
-  this.length = length
-  this.nextStateFactory = nextStateFactory
-}
-
-BlockDataState.prototype.parse = function (callback, data) {
-  if (this.type === 4) {
-    var decoder = new DataDecoder(data)
-    decoder.readStringUtf8() // vendor (skip)
-    var commentListLength = decoder.readInt32()
-    var comment
-    var split
-    var i
-
-    for (i = 0; i < commentListLength; i++) {
-      comment = decoder.readStringUtf8()
-      split = comment.split('=')
-      callback(split[0].toUpperCase(), split[1])
-    }
-  } else if (this.type === 6) {
-    var picture = common.readVorbisPicture(data)
-    callback('METADATA_BLOCK_PICTURE', picture)
-  } else if (this.type === 0) { // METADATA_BLOCK_STREAMINFO
-    if (data.length < 34) return // invalid streaminfo
-    var sampleRate = common.strtokUINT24_BE.get(data, 10) >> 4
-    var totalSamples = data.readUInt32BE(14)
-    var duration = totalSamples / sampleRate
-    callback('duration', duration)
-  }
-
-  return this.nextStateFactory()
-}
-
-BlockDataState.prototype.getExpectedType = function () {
-  return new strtok.BufferType(this.length)
-}
-
-var blockHeaderState = {
-  parse: function (callback, data, done) {
-    var header = {
-      lastBlock: (data[0] & 0x80) === 0x80,
-      type: data[0] & 0x7f,
-      length: common.strtokUINT24_BE.get(data, 1)
-    }
-    var followingStateFactory = header.lastBlock ? function () {
-      done()
-      return finishedState
-    } : function () {
-      return blockHeaderState
-    }
-
-    return new BlockDataState(header.type, header.length, followingStateFactory)
-  },
-  getExpectedType: function () {
-    return new strtok.BufferType(4)
-  }
-}
-
-var idState = {
-  parse: function (callback, data, done) {
-    if (data.toString() !== 'fLaC') {
-      done(new Error('expected flac header but was not found'))
-    }
-    return blockHeaderState
-  },
-  getExpectedType: function () {
-    return new strtok.BufferType(4)
-  }
-}
-
-var startState = {
-  parse: function (callback) {
-    return idState
-  },
-  getExpectedType: function () {
-    return strtok.DONE
-  }
-}
-
-
-/***/ }),
-/* 177 */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
-var common = __webpack_require__(160)
-var strtok = __webpack_require__(161)
-
-module.exports = function (stream, callback, done) {
-  var ApeDescriptor = {
-    len: 44,
-
-    get: function (buf, off) {
-      return {
-        ID: new strtok.StringType(4, 'ascii').get(buf, off),
-        version: strtok.UINT32_LE.get(buf, off + 4) / 1000,
-        descriptorBytes: strtok.UINT32_LE.get(buf, off + 8),
-        headerDataBytes: strtok.UINT32_LE.get(buf, off + 12),
-        APEFrameDataBytes: strtok.UINT32_LE.get(buf, off + 16),
-        APEFrameDataBytesHigh: strtok.UINT32_LE.get(buf, off + 20),
-        terminatingDataBytes: strtok.UINT32_LE.get(buf, off + 24),
-        fileMD5: new strtok.BufferType(16).get(buf, 28)
-      }
-    }
-  }
-
-  // headerDataBytes = 24
-
-  var ApeHeader = {
-    len: 24,
-
-    get: function (buf, off) {
-      return {
-        compressionLevel: strtok.UINT16_LE.get(buf, off),
-        formatFlags: strtok.UINT16_LE.get(buf, off + 2),
-        blocksPerFrame: strtok.UINT32_LE.get(buf, off + 4),
-        finalFrameBlocks: strtok.UINT32_LE.get(buf, off + 8),
-        totalFrames: strtok.UINT32_LE.get(buf, off + 12),
-        bitsPerSample: strtok.UINT16_LE.get(buf, off + 16),
-        channel: strtok.UINT16_LE.get(buf, off + 18),
-        sampleRate: strtok.UINT32_LE.get(buf, off + 20)
-      }
-    }
-  }
-
-  strtok.parse(stream, function (v, cb) {
-    if (v === undefined) {
-      cb.state = 0
-      return ApeDescriptor
-    }
-
-    switch (cb.state) {
-      case 0:
-        if (v.ID !== 'MAC ') {
-          throw new Error('Expected MAC on beginning of file')
-        }
-        cb.state = 1
-        return new strtok.BufferType(v.descriptorBytes - 44)
-
-      case 1:
-        cb.state = 2
-        return ApeHeader
-
-      case 2:
-        callback('duration', calculateDuration(v))
-        return -1
-    }
-  })
-
-  return readMetadata(stream, callback, done)
-}
-
-/**
- * Calculate the media file duration
- * @param ah ApeHeader
- * @return {number} duration in seconds
- */
-function calculateDuration (ah) {
-  var duration = ah.totalFrames > 1 ? ah.blocksPerFrame * (ah.totalFrames - 1) : 0
-  duration += ah.finalFrameBlocks
-  return duration / ah.sampleRate
-}
-
-function readMetadata (stream, callback, done) {
-  var bufs = []
-
-  // TODO: need to be able to parse the tag if its at the start of the file
-  stream.on('data', function (data) {
-    bufs.push(data)
-  })
-
-  common.streamOnRealEnd(stream, function () {
-    var buffer = Buffer.concat(bufs)
-    var offset = buffer.length - 32
-
-    if (buffer.toString('utf8', offset, offset += 8) !== 'APETAGEX') {
-      done(new Error("expected APE header but wasn't found"))
-    }
-
-    var footer = {
-      version: strtok.UINT32_LE.get(buffer, offset, offset + 4),
-      size: strtok.UINT32_LE.get(buffer, offset + 4, offset + 8),
-      count: strtok.UINT32_LE.get(buffer, offset + 8, offset + 12)
-    }
-
-    // go 'back' to where the 'tags' start
-    offset = buffer.length - footer.size
-
-    for (var i = 0; i < footer.count; i++) {
-      var size = strtok.UINT32_LE.get(buffer, offset, offset += 4)
-      var flags = strtok.UINT32_LE.get(buffer, offset, offset += 4)
-      var kind = (flags & 6) >> 1
-
-      var zero = common.findZero(buffer, offset, buffer.length)
-      var key = buffer.toString('ascii', offset, zero)
-      offset = zero + 1
-
-      if (kind === 0) { // utf-8 textstring
-        var value = buffer.toString('utf8', offset, offset += size)
-        var values = value.split(/\x00/g)
-
-        /*jshint loopfunc:true */
-        values.forEach(function (val) {
-          callback(key, val)
-        })
-      } else if (kind === 1) { // binary (probably artwork)
-        if (key === 'Cover Art (Front)' || key === 'Cover Art (Back)') {
-          var picData = buffer.slice(offset, offset + size)
-
-          var off = 0
-          zero = common.findZero(picData, off, picData.length)
-          var description = picData.toString('utf8', off, zero)
-          off = zero + 1
-
-          var picture = {
-            description: description,
-            data: new Buffer(picData.slice(off))
-          }
-
-          offset += size
-          callback(key, picture)
-        }
-      }
-    }
-    return done()
-  })
-}
-
-
-/***/ }),
-/* 178 */
-/***/ (function(module, exports) {
-
-/**
- * Copyright (c) 2014, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * https://raw.github.com/facebook/regenerator/master/LICENSE file. An
- * additional grant of patent rights can be found in the PATENTS file in
- * the same directory.
- */
-
-!(function(global) {
-  "use strict";
-
-  var Op = Object.prototype;
-  var hasOwn = Op.hasOwnProperty;
-  var undefined; // More compressible than void 0.
-  var $Symbol = typeof Symbol === "function" ? Symbol : {};
-  var iteratorSymbol = $Symbol.iterator || "@@iterator";
-  var asyncIteratorSymbol = $Symbol.asyncIterator || "@@asyncIterator";
-  var toStringTagSymbol = $Symbol.toStringTag || "@@toStringTag";
-
-  var inModule = typeof module === "object";
-  var runtime = global.regeneratorRuntime;
-  if (runtime) {
-    if (inModule) {
-      // If regeneratorRuntime is defined globally and we're in a module,
-      // make the exports object identical to regeneratorRuntime.
-      module.exports = runtime;
-    }
-    // Don't bother evaluating the rest of this file if the runtime was
-    // already defined globally.
-    return;
-  }
-
-  // Define the runtime globally (as expected by generated code) as either
-  // module.exports (if we're in a module) or a new, empty object.
-  runtime = global.regeneratorRuntime = inModule ? module.exports : {};
-
-  function wrap(innerFn, outerFn, self, tryLocsList) {
-    // If outerFn provided and outerFn.prototype is a Generator, then outerFn.prototype instanceof Generator.
-    var protoGenerator = outerFn && outerFn.prototype instanceof Generator ? outerFn : Generator;
-    var generator = Object.create(protoGenerator.prototype);
-    var context = new Context(tryLocsList || []);
-
-    // The ._invoke method unifies the implementations of the .next,
-    // .throw, and .return methods.
-    generator._invoke = makeInvokeMethod(innerFn, self, context);
-
-    return generator;
-  }
-  runtime.wrap = wrap;
-
-  // Try/catch helper to minimize deoptimizations. Returns a completion
-  // record like context.tryEntries[i].completion. This interface could
-  // have been (and was previously) designed to take a closure to be
-  // invoked without arguments, but in all the cases we care about we
-  // already have an existing method we want to call, so there's no need
-  // to create a new function object. We can even get away with assuming
-  // the method takes exactly one argument, since that happens to be true
-  // in every case, so we don't have to touch the arguments object. The
-  // only additional allocation required is the completion record, which
-  // has a stable shape and so hopefully should be cheap to allocate.
-  function tryCatch(fn, obj, arg) {
-    try {
-      return { type: "normal", arg: fn.call(obj, arg) };
-    } catch (err) {
-      return { type: "throw", arg: err };
-    }
-  }
-
-  var GenStateSuspendedStart = "suspendedStart";
-  var GenStateSuspendedYield = "suspendedYield";
-  var GenStateExecuting = "executing";
-  var GenStateCompleted = "completed";
-
-  // Returning this object from the innerFn has the same effect as
-  // breaking out of the dispatch switch statement.
-  var ContinueSentinel = {};
-
-  // Dummy constructor functions that we use as the .constructor and
-  // .constructor.prototype properties for functions that return Generator
-  // objects. For full spec compliance, you may wish to configure your
-  // minifier not to mangle the names of these two functions.
-  function Generator() {}
-  function GeneratorFunction() {}
-  function GeneratorFunctionPrototype() {}
-
-  // This is a polyfill for %IteratorPrototype% for environments that
-  // don't natively support it.
-  var IteratorPrototype = {};
-  IteratorPrototype[iteratorSymbol] = function () {
-    return this;
-  };
-
-  var getProto = Object.getPrototypeOf;
-  var NativeIteratorPrototype = getProto && getProto(getProto(values([])));
-  if (NativeIteratorPrototype &&
-      NativeIteratorPrototype !== Op &&
-      hasOwn.call(NativeIteratorPrototype, iteratorSymbol)) {
-    // This environment has a native %IteratorPrototype%; use it instead
-    // of the polyfill.
-    IteratorPrototype = NativeIteratorPrototype;
-  }
-
-  var Gp = GeneratorFunctionPrototype.prototype =
-    Generator.prototype = Object.create(IteratorPrototype);
-  GeneratorFunction.prototype = Gp.constructor = GeneratorFunctionPrototype;
-  GeneratorFunctionPrototype.constructor = GeneratorFunction;
-  GeneratorFunctionPrototype[toStringTagSymbol] =
-    GeneratorFunction.displayName = "GeneratorFunction";
-
-  // Helper for defining the .next, .throw, and .return methods of the
-  // Iterator interface in terms of a single ._invoke method.
-  function defineIteratorMethods(prototype) {
-    ["next", "throw", "return"].forEach(function(method) {
-      prototype[method] = function(arg) {
-        return this._invoke(method, arg);
-      };
-    });
-  }
-
-  runtime.isGeneratorFunction = function(genFun) {
-    var ctor = typeof genFun === "function" && genFun.constructor;
-    return ctor
-      ? ctor === GeneratorFunction ||
-        // For the native GeneratorFunction constructor, the best we can
-        // do is to check its .name property.
-        (ctor.displayName || ctor.name) === "GeneratorFunction"
-      : false;
-  };
-
-  runtime.mark = function(genFun) {
-    if (Object.setPrototypeOf) {
-      Object.setPrototypeOf(genFun, GeneratorFunctionPrototype);
-    } else {
-      genFun.__proto__ = GeneratorFunctionPrototype;
-      if (!(toStringTagSymbol in genFun)) {
-        genFun[toStringTagSymbol] = "GeneratorFunction";
-      }
-    }
-    genFun.prototype = Object.create(Gp);
-    return genFun;
-  };
-
-  // Within the body of any async function, `await x` is transformed to
-  // `yield regeneratorRuntime.awrap(x)`, so that the runtime can test
-  // `hasOwn.call(value, "__await")` to determine if the yielded value is
-  // meant to be awaited.
-  runtime.awrap = function(arg) {
-    return { __await: arg };
-  };
-
-  function AsyncIterator(generator) {
-    function invoke(method, arg, resolve, reject) {
-      var record = tryCatch(generator[method], generator, arg);
-      if (record.type === "throw") {
-        reject(record.arg);
-      } else {
-        var result = record.arg;
-        var value = result.value;
-        if (value &&
-            typeof value === "object" &&
-            hasOwn.call(value, "__await")) {
-          return Promise.resolve(value.__await).then(function(value) {
-            invoke("next", value, resolve, reject);
-          }, function(err) {
-            invoke("throw", err, resolve, reject);
-          });
-        }
-
-        return Promise.resolve(value).then(function(unwrapped) {
-          // When a yielded Promise is resolved, its final value becomes
-          // the .value of the Promise<{value,done}> result for the
-          // current iteration. If the Promise is rejected, however, the
-          // result for this iteration will be rejected with the same
-          // reason. Note that rejections of yielded Promises are not
-          // thrown back into the generator function, as is the case
-          // when an awaited Promise is rejected. This difference in
-          // behavior between yield and await is important, because it
-          // allows the consumer to decide what to do with the yielded
-          // rejection (swallow it and continue, manually .throw it back
-          // into the generator, abandon iteration, whatever). With
-          // await, by contrast, there is no opportunity to examine the
-          // rejection reason outside the generator function, so the
-          // only option is to throw it from the await expression, and
-          // let the generator function handle the exception.
-          result.value = unwrapped;
-          resolve(result);
-        }, reject);
-      }
-    }
-
-    var previousPromise;
-
-    function enqueue(method, arg) {
-      function callInvokeWithMethodAndArg() {
-        return new Promise(function(resolve, reject) {
-          invoke(method, arg, resolve, reject);
-        });
-      }
-
-      return previousPromise =
-        // If enqueue has been called before, then we want to wait until
-        // all previous Promises have been resolved before calling invoke,
-        // so that results are always delivered in the correct order. If
-        // enqueue has not been called before, then it is important to
-        // call invoke immediately, without waiting on a callback to fire,
-        // so that the async generator function has the opportunity to do
-        // any necessary setup in a predictable way. This predictability
-        // is why the Promise constructor synchronously invokes its
-        // executor callback, and why async functions synchronously
-        // execute code before the first await. Since we implement simple
-        // async functions in terms of async generators, it is especially
-        // important to get this right, even though it requires care.
-        previousPromise ? previousPromise.then(
-          callInvokeWithMethodAndArg,
-          // Avoid propagating failures to Promises returned by later
-          // invocations of the iterator.
-          callInvokeWithMethodAndArg
-        ) : callInvokeWithMethodAndArg();
-    }
-
-    // Define the unified helper method that is used to implement .next,
-    // .throw, and .return (see defineIteratorMethods).
-    this._invoke = enqueue;
-  }
-
-  defineIteratorMethods(AsyncIterator.prototype);
-  AsyncIterator.prototype[asyncIteratorSymbol] = function () {
-    return this;
-  };
-  runtime.AsyncIterator = AsyncIterator;
-
-  // Note that simple async functions are implemented on top of
-  // AsyncIterator objects; they just return a Promise for the value of
-  // the final result produced by the iterator.
-  runtime.async = function(innerFn, outerFn, self, tryLocsList) {
-    var iter = new AsyncIterator(
-      wrap(innerFn, outerFn, self, tryLocsList)
-    );
-
-    return runtime.isGeneratorFunction(outerFn)
-      ? iter // If outerFn is a generator, return the full iterator.
-      : iter.next().then(function(result) {
-          return result.done ? result.value : iter.next();
-        });
-  };
-
-  function makeInvokeMethod(innerFn, self, context) {
-    var state = GenStateSuspendedStart;
-
-    return function invoke(method, arg) {
-      if (state === GenStateExecuting) {
-        throw new Error("Generator is already running");
-      }
-
-      if (state === GenStateCompleted) {
-        if (method === "throw") {
-          throw arg;
-        }
-
-        // Be forgiving, per 25.3.3.3.3 of the spec:
-        // https://people.mozilla.org/~jorendorff/es6-draft.html#sec-generatorresume
-        return doneResult();
-      }
-
-      context.method = method;
-      context.arg = arg;
-
-      while (true) {
-        var delegate = context.delegate;
-        if (delegate) {
-          var delegateResult = maybeInvokeDelegate(delegate, context);
-          if (delegateResult) {
-            if (delegateResult === ContinueSentinel) continue;
-            return delegateResult;
-          }
-        }
-
-        if (context.method === "next") {
-          // Setting context._sent for legacy support of Babel's
-          // function.sent implementation.
-          context.sent = context._sent = context.arg;
-
-        } else if (context.method === "throw") {
-          if (state === GenStateSuspendedStart) {
-            state = GenStateCompleted;
-            throw context.arg;
-          }
-
-          context.dispatchException(context.arg);
-
-        } else if (context.method === "return") {
-          context.abrupt("return", context.arg);
-        }
-
-        state = GenStateExecuting;
-
-        var record = tryCatch(innerFn, self, context);
-        if (record.type === "normal") {
-          // If an exception is thrown from innerFn, we leave state ===
-          // GenStateExecuting and loop back for another invocation.
-          state = context.done
-            ? GenStateCompleted
-            : GenStateSuspendedYield;
-
-          if (record.arg === ContinueSentinel) {
-            continue;
-          }
-
-          return {
-            value: record.arg,
-            done: context.done
-          };
-
-        } else if (record.type === "throw") {
-          state = GenStateCompleted;
-          // Dispatch the exception by looping back around to the
-          // context.dispatchException(context.arg) call above.
-          context.method = "throw";
-          context.arg = record.arg;
-        }
-      }
-    };
-  }
-
-  // Call delegate.iterator[context.method](context.arg) and handle the
-  // result, either by returning a { value, done } result from the
-  // delegate iterator, or by modifying context.method and context.arg,
-  // setting context.delegate to null, and returning the ContinueSentinel.
-  function maybeInvokeDelegate(delegate, context) {
-    var method = delegate.iterator[context.method];
-    if (method === undefined) {
-      // A .throw or .return when the delegate iterator has no .throw
-      // method always terminates the yield* loop.
-      context.delegate = null;
-
-      if (context.method === "throw") {
-        if (delegate.iterator.return) {
-          // If the delegate iterator has a return method, give it a
-          // chance to clean up.
-          context.method = "return";
-          context.arg = undefined;
-          maybeInvokeDelegate(delegate, context);
-
-          if (context.method === "throw") {
-            // If maybeInvokeDelegate(context) changed context.method from
-            // "return" to "throw", let that override the TypeError below.
-            return ContinueSentinel;
-          }
-        }
-
-        context.method = "throw";
-        context.arg = new TypeError(
-          "The iterator does not provide a 'throw' method");
-      }
-
-      return ContinueSentinel;
-    }
-
-    var record = tryCatch(method, delegate.iterator, context.arg);
-
-    if (record.type === "throw") {
-      context.method = "throw";
-      context.arg = record.arg;
-      context.delegate = null;
-      return ContinueSentinel;
-    }
-
-    var info = record.arg;
-
-    if (! info) {
-      context.method = "throw";
-      context.arg = new TypeError("iterator result is not an object");
-      context.delegate = null;
-      return ContinueSentinel;
-    }
-
-    if (info.done) {
-      // Assign the result of the finished delegate to the temporary
-      // variable specified by delegate.resultName (see delegateYield).
-      context[delegate.resultName] = info.value;
-
-      // Resume execution at the desired location (see delegateYield).
-      context.next = delegate.nextLoc;
-
-      // If context.method was "throw" but the delegate handled the
-      // exception, let the outer generator proceed normally. If
-      // context.method was "next", forget context.arg since it has been
-      // "consumed" by the delegate iterator. If context.method was
-      // "return", allow the original .return call to continue in the
-      // outer generator.
-      if (context.method !== "return") {
-        context.method = "next";
-        context.arg = undefined;
-      }
-
-    } else {
-      // Re-yield the result returned by the delegate method.
-      return info;
-    }
-
-    // The delegate iterator is finished, so forget it and continue with
-    // the outer generator.
-    context.delegate = null;
-    return ContinueSentinel;
-  }
-
-  // Define Generator.prototype.{next,throw,return} in terms of the
-  // unified ._invoke helper method.
-  defineIteratorMethods(Gp);
-
-  Gp[toStringTagSymbol] = "Generator";
-
-  // A Generator should always return itself as the iterator object when the
-  // @@iterator function is called on it. Some browsers' implementations of the
-  // iterator prototype chain incorrectly implement this, causing the Generator
-  // object to not be returned from this call. This ensures that doesn't happen.
-  // See https://github.com/facebook/regenerator/issues/274 for more details.
-  Gp[iteratorSymbol] = function() {
-    return this;
-  };
-
-  Gp.toString = function() {
-    return "[object Generator]";
-  };
-
-  function pushTryEntry(locs) {
-    var entry = { tryLoc: locs[0] };
-
-    if (1 in locs) {
-      entry.catchLoc = locs[1];
-    }
-
-    if (2 in locs) {
-      entry.finallyLoc = locs[2];
-      entry.afterLoc = locs[3];
-    }
-
-    this.tryEntries.push(entry);
-  }
-
-  function resetTryEntry(entry) {
-    var record = entry.completion || {};
-    record.type = "normal";
-    delete record.arg;
-    entry.completion = record;
-  }
-
-  function Context(tryLocsList) {
-    // The root entry object (effectively a try statement without a catch
-    // or a finally block) gives us a place to store values thrown from
-    // locations where there is no enclosing try statement.
-    this.tryEntries = [{ tryLoc: "root" }];
-    tryLocsList.forEach(pushTryEntry, this);
-    this.reset(true);
-  }
-
-  runtime.keys = function(object) {
-    var keys = [];
-    for (var key in object) {
-      keys.push(key);
-    }
-    keys.reverse();
-
-    // Rather than returning an object with a next method, we keep
-    // things simple and return the next function itself.
-    return function next() {
-      while (keys.length) {
-        var key = keys.pop();
-        if (key in object) {
-          next.value = key;
-          next.done = false;
-          return next;
-        }
-      }
-
-      // To avoid creating an additional object, we just hang the .value
-      // and .done properties off the next function object itself. This
-      // also ensures that the minifier will not anonymize the function.
-      next.done = true;
-      return next;
-    };
-  };
-
-  function values(iterable) {
-    if (iterable) {
-      var iteratorMethod = iterable[iteratorSymbol];
-      if (iteratorMethod) {
-        return iteratorMethod.call(iterable);
-      }
-
-      if (typeof iterable.next === "function") {
-        return iterable;
-      }
-
-      if (!isNaN(iterable.length)) {
-        var i = -1, next = function next() {
-          while (++i < iterable.length) {
-            if (hasOwn.call(iterable, i)) {
-              next.value = iterable[i];
-              next.done = false;
-              return next;
-            }
-          }
-
-          next.value = undefined;
-          next.done = true;
-
-          return next;
-        };
-
-        return next.next = next;
-      }
-    }
-
-    // Return an iterator with no values.
-    return { next: doneResult };
-  }
-  runtime.values = values;
-
-  function doneResult() {
-    return { value: undefined, done: true };
-  }
-
-  Context.prototype = {
-    constructor: Context,
-
-    reset: function(skipTempReset) {
-      this.prev = 0;
-      this.next = 0;
-      // Resetting context._sent for legacy support of Babel's
-      // function.sent implementation.
-      this.sent = this._sent = undefined;
-      this.done = false;
-      this.delegate = null;
-
-      this.method = "next";
-      this.arg = undefined;
-
-      this.tryEntries.forEach(resetTryEntry);
-
-      if (!skipTempReset) {
-        for (var name in this) {
-          // Not sure about the optimal order of these conditions:
-          if (name.charAt(0) === "t" &&
-              hasOwn.call(this, name) &&
-              !isNaN(+name.slice(1))) {
-            this[name] = undefined;
-          }
-        }
-      }
-    },
-
-    stop: function() {
-      this.done = true;
-
-      var rootEntry = this.tryEntries[0];
-      var rootRecord = rootEntry.completion;
-      if (rootRecord.type === "throw") {
-        throw rootRecord.arg;
-      }
-
-      return this.rval;
-    },
-
-    dispatchException: function(exception) {
-      if (this.done) {
-        throw exception;
-      }
-
-      var context = this;
-      function handle(loc, caught) {
-        record.type = "throw";
-        record.arg = exception;
-        context.next = loc;
-
-        if (caught) {
-          // If the dispatched exception was caught by a catch block,
-          // then let that catch block handle the exception normally.
-          context.method = "next";
-          context.arg = undefined;
-        }
-
-        return !! caught;
-      }
-
-      for (var i = this.tryEntries.length - 1; i >= 0; --i) {
-        var entry = this.tryEntries[i];
-        var record = entry.completion;
-
-        if (entry.tryLoc === "root") {
-          // Exception thrown outside of any try block that could handle
-          // it, so set the completion value of the entire function to
-          // throw the exception.
-          return handle("end");
-        }
-
-        if (entry.tryLoc <= this.prev) {
-          var hasCatch = hasOwn.call(entry, "catchLoc");
-          var hasFinally = hasOwn.call(entry, "finallyLoc");
-
-          if (hasCatch && hasFinally) {
-            if (this.prev < entry.catchLoc) {
-              return handle(entry.catchLoc, true);
-            } else if (this.prev < entry.finallyLoc) {
-              return handle(entry.finallyLoc);
-            }
-
-          } else if (hasCatch) {
-            if (this.prev < entry.catchLoc) {
-              return handle(entry.catchLoc, true);
-            }
-
-          } else if (hasFinally) {
-            if (this.prev < entry.finallyLoc) {
-              return handle(entry.finallyLoc);
-            }
-
-          } else {
-            throw new Error("try statement without catch or finally");
-          }
-        }
-      }
-    },
-
-    abrupt: function(type, arg) {
-      for (var i = this.tryEntries.length - 1; i >= 0; --i) {
-        var entry = this.tryEntries[i];
-        if (entry.tryLoc <= this.prev &&
-            hasOwn.call(entry, "finallyLoc") &&
-            this.prev < entry.finallyLoc) {
-          var finallyEntry = entry;
-          break;
-        }
-      }
-
-      if (finallyEntry &&
-          (type === "break" ||
-           type === "continue") &&
-          finallyEntry.tryLoc <= arg &&
-          arg <= finallyEntry.finallyLoc) {
-        // Ignore the finally entry if control is not jumping to a
-        // location outside the try/catch block.
-        finallyEntry = null;
-      }
-
-      var record = finallyEntry ? finallyEntry.completion : {};
-      record.type = type;
-      record.arg = arg;
-
-      if (finallyEntry) {
-        this.method = "next";
-        this.next = finallyEntry.finallyLoc;
-        return ContinueSentinel;
-      }
-
-      return this.complete(record);
-    },
-
-    complete: function(record, afterLoc) {
-      if (record.type === "throw") {
-        throw record.arg;
-      }
-
-      if (record.type === "break" ||
-          record.type === "continue") {
-        this.next = record.arg;
-      } else if (record.type === "return") {
-        this.rval = this.arg = record.arg;
-        this.method = "return";
-        this.next = "end";
-      } else if (record.type === "normal" && afterLoc) {
-        this.next = afterLoc;
-      }
-
-      return ContinueSentinel;
-    },
-
-    finish: function(finallyLoc) {
-      for (var i = this.tryEntries.length - 1; i >= 0; --i) {
-        var entry = this.tryEntries[i];
-        if (entry.finallyLoc === finallyLoc) {
-          this.complete(entry.completion, entry.afterLoc);
-          resetTryEntry(entry);
-          return ContinueSentinel;
-        }
-      }
-    },
-
-    "catch": function(tryLoc) {
-      for (var i = this.tryEntries.length - 1; i >= 0; --i) {
-        var entry = this.tryEntries[i];
-        if (entry.tryLoc === tryLoc) {
-          var record = entry.completion;
-          if (record.type === "throw") {
-            var thrown = record.arg;
-            resetTryEntry(entry);
-          }
-          return thrown;
-        }
-      }
-
-      // The context.catch method must only be called with a location
-      // argument that corresponds to a known catch block.
-      throw new Error("illegal catch attempt");
-    },
-
-    delegateYield: function(iterable, resultName, nextLoc) {
-      this.delegate = {
-        iterator: values(iterable),
-        resultName: resultName,
-        nextLoc: nextLoc
-      };
-
-      if (this.method === "next") {
-        // Deliberately forget the last sent value so that we don't
-        // accidentally pass it on to the delegate.
-        this.arg = undefined;
-      }
-
-      return ContinueSentinel;
-    }
-  };
-})(
-  // In sloppy mode, unbound `this` refers to the global object, fallback to
-  // Function constructor if we're in global strict mode. That is sadly a form
-  // of indirect eval which violates Content Security Policy.
-  (function() { return this })() || Function("return this")()
-);
-
 
 /***/ })
 /******/ ]);

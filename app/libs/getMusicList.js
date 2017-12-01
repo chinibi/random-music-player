@@ -8,7 +8,7 @@ import mm from 'musicmetadata';
 
 /**
  * Get a list of files of supported file extensions from the given directory
- * Supported extensions are: .mp3, .mp4, .wav, .ogg, .flac, and .3gp
+ * Supported extensions are: .mp3, .mp4, .wav, .ogg, .flac, and .opus
  * @param dir (string) The relative path to the directory being searched.
  *    The trailing slash must be included.
  *
@@ -19,7 +19,7 @@ async function getMusicList(dir) {
 
   let filenames = fs.readdirSync(dir);
   // we should pass in only supported file types
-  const supportedExtensions = /\.(mp3|mp4|wav|ogg|flac|3gp)$/;
+  const supportedExtensions = /\.(mp3|mp4|wav|ogg|flac|opus)$/;
   filenames.filter(filename => filename.match(supportedExtensions));
 
   musicList = await handleFiles(filenames, dir);
