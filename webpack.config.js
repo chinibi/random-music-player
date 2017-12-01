@@ -32,6 +32,7 @@ const config = {
     new webpack.IgnorePlugin(/vertx/)
   ],
   resolve: {
+    alias: { soundmanager2: 'soundmanager2/script/soundmanager2-nodebug-jsmin.js' },
     extensions: ['.js', '.jsx']
   },
   devServer: {
