@@ -33,7 +33,7 @@
   },
   "dependencies": {
     "classnames": "^2.2.5",
-    "music-metadata": "^0.8.7",
+    "electron-json-storage": "^4.0.2",
     "musicmetadata": "^2.0.5",
     "react": "^16.2.0",
     "react-autocomplete": "^1.7.2",

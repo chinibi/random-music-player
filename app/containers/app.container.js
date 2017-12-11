@@ -1,6 +1,7 @@
 import React from 'react';
 import Sound from 'react-sound';
 import getMusicList from '../libs/getMusicList';
+import SettingsStore from '../libs/SettingsStore';
 
 import Details from '../components/details.component';
 import Player from '../components/player.component';
@@ -12,7 +13,14 @@ class AppContainer extends React.Component {
   constructor(props) {
     super(props);
 
-    this.soundDir = './public/sounds/'; // relative to index.html. make this configurable later TODO
+    this.settingsStore = new SettingsStore({
+      configName: 'user-config',
+      defaults: {
+        windowBounds: { width: 800, height: 600 },
+        soundDir: './public/sounds/'
+      }
+    });
+
     this.state = {
       currentTrack: {title: '', uri: '', album: '', artist: ''},
       playStatus: Sound.status.STOPPED,
@@ -23,7 +31,8 @@ class AppContainer extends React.Component {
       playFromPosition: 0,
       autoCompleteValue: '',
       remainingTracks: [],
-      allTracks: []
+      allTracks: [],
+      soundDir: this.settingsStore.get('soundDir')
     };
   }
 
@@ -35,7 +44,7 @@ class AppContainer extends React.Component {
         this.setState({
           currentTrack: {
             title: firstTrack.data.title,
-            uri: this.soundDir + firstTrack.data.filename,
+            uri: this.state.soundDir + firstTrack.data.filename,
             album: firstTrack.data.album,
             artist: firstTrack.data.artist
           }
@@ -52,7 +61,7 @@ class AppContainer extends React.Component {
   }
 
   populateAllTracksList() {
-    return getMusicList(this.soundDir).then(tracks => {
+    return getMusicList(this.state.soundDir).then(tracks => {
       this.setState({ allTracks: tracks });
     });
   }
@@ -79,7 +88,7 @@ class AppContainer extends React.Component {
       elapsed: '00:00',
       currentTrack: {
         title: track.title,
-        uri: this.soundDir + track.filename,
+        uri: this.state.soundDir + track.filename,
         album: track.album,
         artist: track.artist
       }
@@ -107,6 +116,30 @@ class AppContainer extends React.Component {
     if (nextTrack) {
       this.setCurrentTrack(nextTrack.data);
       this.removeTrackFromQueue(nextTrack.index);
+    }
+  }
+
+  handleSoundDirChange(event) {
+    const newPath = event.target.files[0].path + '/';
+    if (this.settingsStore.set('soundDir', newPath)) {
+      this.setState({ soundDir: newPath }, () => {
+        this.stop();
+        this.populateAllTracksList()
+          .then(() => {
+            this.populateRemainingTracksList();
+            const firstTrack = this.getRandomTrack();
+            this.setState({
+              currentTrack: {
+                title: firstTrack.data.title,
+                uri: this.state.soundDir + firstTrack.data.filename,
+                album: firstTrack.data.album,
+                artist: firstTrack.data.artist
+              }
+            });
+            this.removeTrackFromQueue(firstTrack.index);
+          })
+          .catch(err => console.error(err));
+      });
     }
   }
 
@@ -197,7 +230,10 @@ class AppContainer extends React.Component {
           volume={this.state.volume}
           onFinishedPlaying={this.handleTrackFinished.bind(this)}
         />
-        <Footer />
+        <Footer
+          soundDir={this.state.soundDir}
+          handleSoundDirChange={this.handleSoundDirChange.bind(this)}
+        />
       </div>
     );
   }
