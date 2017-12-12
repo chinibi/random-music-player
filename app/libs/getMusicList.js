@@ -20,7 +20,7 @@ async function getMusicList(dir) {
   let filenames = fs.readdirSync(dir);
   // we should pass in only supported file types
   const supportedExtensions = /\.(mp3|mp4|wav|ogg|flac|opus)$/;
-  filenames.filter(filename => filename.match(supportedExtensions));
+  filenames = filenames.filter(filename => filename.match(supportedExtensions));
 
   musicList = await handleFiles(filenames, dir);
 
@@ -31,6 +31,10 @@ function handleFiles(files, dirName) {
   return new Promise((res, rej) => {
     let filesData = [];
     let filesRemaining = files.length;
+
+    if (!filesRemaining) {
+      rej('No sound files found in directory');
+    }
 
     files.forEach(file => {
       let readStream = fs.createReadStream(dirName + file);

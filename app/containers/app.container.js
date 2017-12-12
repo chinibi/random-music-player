@@ -17,13 +17,15 @@ class AppContainer extends React.Component {
       configName: 'user-config',
       defaults: {
         windowBounds: { width: 800, height: 600 },
-        soundDir: './public/sounds/'
+        soundDir: './public/sounds/',
+        volume: 50
       }
     });
 
     this.state = {
       currentTrack: {title: '', uri: '', album: '', artist: ''},
       playStatus: Sound.status.STOPPED,
+      playEnabled: false,
       elapsed: '00:00',
       total: '00:00',
       position: 0,
@@ -51,18 +53,24 @@ class AppContainer extends React.Component {
         });
         this.removeTrackFromQueue(firstTrack.index);
       })
-      .catch(err => console.error(err));
+      .catch(err => {
+        console.log(err);
+        this.setState({ playEnabled: false });
+      });
   }
 
   componentDidUpdate() {
-    if (!this.state.remainingTracks.length) {
+    if (this.state.allTracks.length && !this.state.remainingTracks.length) {
       this.populateRemainingTracksList();
     }
   }
 
   populateAllTracksList() {
     return getMusicList(this.state.soundDir).then(tracks => {
-      this.setState({ allTracks: tracks });
+      this.setState({
+        allTracks: tracks,
+        playEnabled: true
+      });
     });
   }
 
@@ -138,7 +146,10 @@ class AppContainer extends React.Component {
             });
             this.removeTrackFromQueue(firstTrack.index);
           })
-          .catch(err => console.error(err));
+          .catch(err => {
+            console.log(err);
+            this.setState({ playEnabled: false });
+          });
       });
     }
   }
@@ -158,6 +169,10 @@ class AppContainer extends React.Component {
   }
 
   togglePlay() {
+    if (!this.state.playEnabled) {
+      alert('No sound files found in directory.  Please select a directory by clicking the folder icon at the bottom of the window.');
+      return console.error('togglePlay failed: no sounds loaded');
+    }
     let playStatus = this.state.playStatus === Sound.status.PLAYING ? Sound.status.PAUSED : Sound.status.PLAYING;
 
     this.setState({ playStatus });
@@ -170,12 +185,19 @@ class AppContainer extends React.Component {
       elapsed: '00:00'
     });
 
-    // Reset the remaining tracks queue and set a new currentTrack
-    this.populateRemainingTracksList();
-    const randomIndex = Math.floor(this.state.allTracks.length * Math.random());
-    const randomTrack = this.state.allTracks[randomIndex];
-    this.setCurrentTrack(randomTrack);
-    this.removeTrackFromQueue(randomIndex);
+    if (this.state.allTracks.length) {
+      // Reset the remaining tracks queue and set a new currentTrack
+      this.populateRemainingTracksList();
+      const randomIndex = Math.floor(this.state.allTracks.length * Math.random());
+      const randomTrack = this.state.allTracks[randomIndex];
+      this.setCurrentTrack(randomTrack);
+      this.removeTrackFromQueue(randomIndex);
+    } else {
+      this.setState({
+        remainingTracks: [],
+        currentTrack: {title: '', uri: '', album: '', artist: ''}
+      });
+    }
   }
 
   forward() {
