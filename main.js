@@ -1,14 +1,53 @@
 'use strict';
 
 const electron = require('electron');
+// Automatically reload on file change
+require('electron-reload')(__dirname);
+// Load user settings handler
+const settingsStore = require('./app/libs/SettingsStore');
+
 // Module to control application life.
 const app = electron.app;
-// Automatically reload on file change
-require('electron-reload')(__dirname, {
-  electron: require('./node_modules/electron')
-});
 // Module to create native browser window.
 const BrowserWindow = electron.BrowserWindow;
+// Module to customize browser menu items
+const Menu = electron.Menu;
+
+// Create menu items to override Electron's default menu
+const menuTemplate = [
+  {
+    label: 'File',
+    submenu: [
+      {'role': 'close'}
+    ]
+  },
+  {
+    label: 'Player',
+    submenu: [
+      {
+        label: 'Play/Pause',
+        accelerator: 'space',
+        click: () => console.log('play/pause')
+      },
+      {
+        label: 'Skip Track',
+        click: () => console.log('skip track')
+      },
+      {
+        label: 'Stop',
+        click: () => console.log('stop track')
+      }
+    ]
+  },
+  {
+    label: 'Developer',
+    submenu: [
+      {
+        role: 'toggledevtools'
+      }
+    ]
+  }
+];
 
 // Keep a global reference of the window object, if you don't, the window will
 // be closed automatically when the JavaScript object is garbage collected.
@@ -16,13 +55,26 @@ let mainWindow;
 
 function createWindow () {
   // Create the browser window.
-  mainWindow = new BrowserWindow({height: 600, width: 800, resizable: false});
+  let { height, width } = settingsStore.get('windowBounds');
+  mainWindow = new BrowserWindow({ height, width });
+
+  // Set menu items
+  const menu = Menu.buildFromTemplate(menuTemplate);
+  Menu.setApplicationMenu(menu);
 
   // and load the index.html of the app.
   mainWindow.loadURL('file://' + __dirname + '/index.html');
 
   // Open the DevTools.
-  mainWindow.webContents.openDevTools();
+  // mainWindow.webContents.openDevTools();
+
+  // Emitted when the window is about to be closed.
+  mainWindow.on('close', function() {
+    settingsStore.set('windowBounds', {
+      width: mainWindow.getBounds().width,
+      height: mainWindow.getBounds().height
+    });
+  });
 
   // Emitted when the window is closed.
   mainWindow.on('closed', function() {
@@ -31,6 +83,19 @@ function createWindow () {
     // when you should delete the corresponding element.
     mainWindow = null;
   });
+
+  // Install React Dev Tools on development environment
+  if (process.env.NODE_ENV !== 'production') {
+    const { default: installExtension, REACT_DEVELOPER_TOOLS } = require('electron-devtools-installer');
+
+    installExtension(REACT_DEVELOPER_TOOLS)
+      .then((name) => {
+        console.log(`Added Extension:  ${name}`);
+      })
+      .catch((err) => {
+        console.log('An error occurred: ', err);
+      });
+  }
 }
 
 // This method will be called when Electron has finished
