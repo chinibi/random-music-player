@@ -4,7 +4,7 @@ const electron = require('electron');
 // Automatically reload on file change
 require('electron-reload')(__dirname);
 // Load user settings handler
-const SettingsStore = require('./app/libs/SettingsStore');
+const settingsStore = require('./app/libs/SettingsStore');
 
 // Module to control application life.
 const app = electron.app;
@@ -48,15 +48,6 @@ const menuTemplate = [
     ]
   }
 ];
-
-// Define default user settings
-const settingsStore = new SettingsStore({
-  configName: 'user-config',
-  defaults: {
-    windowBounds: { width: 800, height: 600 },
-    soundDir: './public/sounds/'
-  }
-});
 
 // Keep a global reference of the window object, if you don't, the window will
 // be closed automatically when the JavaScript object is garbage collected.

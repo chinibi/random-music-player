@@ -5,7 +5,7 @@ const fs = require('fs');
 class SettingsStore {
   constructor(options) {
     const userDataPath = (electron.app || electron.remote.app).getPath('userData');
-
+    this.defaults = options.defaults;
     this.path = path.join(userDataPath, options.configName + '.json');
     this.data = this.parseDataFile(this.path, options.defaults);
   }
@@ -15,6 +15,7 @@ class SettingsStore {
   }
 
   set(key, value) {
+    this.data = this.parseDataFile(this.path, this.defaults);
     this.data[key] = value;
     try {
       fs.writeFileSync(this.path, JSON.stringify(this.data));
@@ -39,4 +40,13 @@ class SettingsStore {
   }
 }
 
-module.exports = SettingsStore;
+const settingsStore = new SettingsStore({
+  configName: 'user-config',
+  defaults: {
+    windowBounds: { width: 800, height: 600 },
+    soundDir: './public/sounds/',
+    volume: 50
+  }
+});
+
+module.exports = settingsStore;

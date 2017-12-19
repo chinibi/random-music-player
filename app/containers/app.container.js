@@ -1,7 +1,8 @@
 import React from 'react';
 import Sound from 'react-sound';
 import getMusicList from '../libs/getMusicList';
-import SettingsStore from '../libs/SettingsStore';
+import settingsStore from '../libs/SettingsStore';
+import debounce from '../libs/debounce';
 
 import Details from '../components/details.component';
 import Player from '../components/player.component';
@@ -13,14 +14,8 @@ class AppContainer extends React.Component {
   constructor(props) {
     super(props);
 
-    this.settingsStore = new SettingsStore({
-      configName: 'user-config',
-      defaults: {
-        windowBounds: { width: 800, height: 600 },
-        soundDir: './public/sounds/',
-        volume: 50
-      }
-    });
+    // Debounce saving volume to user settings
+    this.saveVolumeHandler = debounce(this.saveVolumeHandler, 250);
 
     this.state = {
       currentTrack: {title: '', uri: '', album: '', artist: ''},
@@ -29,12 +24,12 @@ class AppContainer extends React.Component {
       elapsed: '00:00',
       total: '00:00',
       position: 0,
-      volume: 50,
+      volume: settingsStore.get('volume'),
       playFromPosition: 0,
       autoCompleteValue: '',
       remainingTracks: [],
       allTracks: [],
-      soundDir: this.settingsStore.get('soundDir')
+      soundDir: settingsStore.get('soundDir')
     };
   }
 
@@ -129,7 +124,7 @@ class AppContainer extends React.Component {
 
   handleSoundDirChange(event) {
     const newPath = event.target.files[0].path + '/';
-    if (this.settingsStore.set('soundDir', newPath)) {
+    if (settingsStore.set('soundDir', newPath)) {
       this.setState({ soundDir: newPath }, () => {
         this.stop();
         this.populateAllTracksList()
@@ -210,6 +205,11 @@ class AppContainer extends React.Component {
 
   volumeChange(e) {
     this.setState({ volume: parseInt(e.target.value) });
+    this.saveVolumeHandler();
+  }
+
+  saveVolumeHandler() {
+    settingsStore.set('volume', this.state.volume);
   }
 
   render() {
