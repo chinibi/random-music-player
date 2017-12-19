@@ -77,6 +77,14 @@ function createWindow () {
   // Open the DevTools.
   // mainWindow.webContents.openDevTools();
 
+  // Emitted when the window is about to be closed.
+  mainWindow.on('close', function() {
+    settingsStore.set('windowBounds', {
+      width: mainWindow.getBounds().width,
+      height: mainWindow.getBounds().height
+    });
+  });
+
   // Emitted when the window is closed.
   mainWindow.on('closed', function() {
     // Dereference the window object, usually you would store windows
